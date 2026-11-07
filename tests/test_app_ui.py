@@ -277,7 +277,12 @@ def test_dragging_crop_handles_and_rotation_saves_float_geometry(app_project):
         revision = api._load(path).project_revision
         drag(page, start, [start[0], start[1] + 40])
         expect(page.locator('.pill b')).not_to_have_text(f'{round(angle_before, 1):g}°')
-        current = api._load(path)
+        # The label changes while dragging; wait for the save itself before reading the file.
+        for _ in range(100):
+            current = api._load(path)
+            if current.project_revision > revision:
+                break
+            page.wait_for_timeout(50)
         assert current.project_revision == revision + 1
         angle_after = rotation_degrees(current, current.panels[0])
         assert abs(angle_after - angle_before) > .3

@@ -49,6 +49,9 @@ def _pattern(term: str) -> re.Pattern:
 
 
 def main(argv=None) -> int:
+    for stream in (sys.stdout, sys.stderr):  # Windows runners default to cp1252.
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--since", help="also check messages of commits after this ref (e.g. origin/main)")
     args = parser.parse_args(argv)

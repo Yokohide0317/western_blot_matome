@@ -18,3 +18,4 @@ wblot_output/
 *.scn
 
 .DS_Store
+.claude/worktrees/

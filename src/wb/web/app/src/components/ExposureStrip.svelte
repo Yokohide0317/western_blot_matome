@@ -50,9 +50,9 @@
   article.adopted { border-color: var(--teal); background: #f4f6f6; }
   .thumb { display: block; width: 100%; height: 40px; padding: 0; border: 0; background: #eef1f2; border-radius: 5px; overflow: hidden; }
   .thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
-  .meta { display: flex; align-items: center; gap: 8px; padding: 4px 0 0; font-size: 12px; }
-  .sat-dot { color: #d83a2e; font-size: 11px; line-height: 1; }
+  .meta { display: flex; align-items: center; gap: 8px; padding: 4px 0 0; font-size: var(--text-meta); }
+  .sat-dot { color: #d83a2e; font-size: var(--text-caption); line-height: 1; }
   .meta strong { font-weight: 500; }
-  .adopt { display: inline-flex; align-items: center; justify-content: center; margin-left: auto; padding: 0 8px; font-size: 12px; line-height: 20px; border-radius: 4px; color: #7b8e97; }
+  .adopt { display: inline-flex; align-items: center; justify-content: center; margin-left: auto; padding: 0 8px; font-size: var(--text-meta); line-height: 20px; border-radius: 4px; color: var(--muted); }
   .adopt[aria-pressed='true'] { background: var(--teal); border-color: var(--teal); color: #fff; }
 </style>

@@ -52,7 +52,9 @@
   $: exposure = exposureView(project, preview ?? panel?.selected_exposure_id, refFrame);
   $: display = displayFor(mode, refFrame, exposure, markerFrame, markerTransform);
   $: canMap = display.canMap !== false;
-  $: editable = stage === 'band' && !!dg?.crop_rect && mode === 'lum' && !drawMode && !busy;
+  // Handles stay on screen while a save is running (so keyboard focus survives); they only accept input when not busy.
+  $: showHandles = stage === 'band' && !!dg?.crop_rect && mode === 'lum' && !drawMode;
+  $: editable = showHandles && !busy;
   $: fromDisplay = inverse(display.toDisplay);
   function exposureView(project, captureId, ref) {
     const capture = find(project.captures, 'capture_id', captureId);
@@ -100,8 +102,9 @@
   $: markerCrop = canMap && mode !== 'lum' && stage === 'band' && markerLive && liveRect
     ? toDisplay(cropPolygon({x0: markerLive.x0, x1: markerLive.x1, y0: live.top, y1: live.bottom}, rotation(live.angle, settings.center)))
     : null;
-  $: markerEditable = !!markerCrop && !!onmarker && !drawMode && !busy && !!dg?.crop_rect;
-  $: markerHandles = markerEditable ? handlePoints(markerCrop, scale) : null;
+  $: markerShown = !!markerCrop && !!onmarker && !drawMode && !!dg?.crop_rect;
+  $: markerEditable = markerShown && !busy;
+  $: markerHandles = markerShown ? handlePoints(markerCrop, scale) : null;
   $: draft = boxDrag ? draftBox(boxDrag.start, boxDrag.current, refFrame, boxDrag.angle, boxDrag.center) : null;
   $: draftPoints = draft ? toDisplay(cropPolygon(draft.rect, rotation(boxDrag.angle, boxDrag.center))) : null;
 
@@ -120,7 +123,7 @@
       displayFrameId: display.frame?.frame_id, toDisplay: display.toDisplay, markerTransform}),
   })).filter(membrane => membrane.points);
 
-  $: handles = editable && chosen ? handlePoints(chosen, scale) : null;
+  $: handles = showHandles && chosen ? handlePoints(chosen, scale) : null;
   function handlePoints(poly, scale) {
     const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     const center = mid(poly[0], poly[2]), right = mid(poly[1], poly[2]), left = mid(poly[0], poly[3]);
@@ -295,6 +298,48 @@
     ondrag(false);
     if (finished.moved && !(await onmarker(panel.panel_id, {x0: markerLive.x0, x1: markerLive.x1}))) markerLive = finished.start;
   }
+  // Arrow keys on a focused handle: 1 px (Shift: 10 px) or 0.1° (Shift: 1°); saved after a short pause or on blur.
+  let keyTimer;
+  const scheduleKeySave = () => { clearTimeout(keyTimer); keyTimer = setTimeout(keyRelease, 600); };
+  const arrows = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]};
+  function keyHandle(kind, event, fromMarker = false) {
+    const step = arrows[event.key];
+    if (!step || !(editable || (fromMarker && markerEditable))) return;
+    const horizontal = kind === 'left' || kind === 'right';
+    const delta = kind === 'rotate' ? step[0] || -step[1] : horizontal ? step[0] : step[1];
+    if (!delta) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!drag) {
+      drag = {kind, keyboard: true, moved: false, min: minHeight(live), minW: minWidth({...live, rect: dg.crop_rect}), start: {...live}};
+      ondrag(true);
+    }
+    const center = settings.center, size = event.shiftKey ? 10 : 1;
+    const state = {rect: dg.crop_rect, left: live.left, right: live.right, top: live.top, bottom: live.bottom, angle: live.angle, min: drag.min, minW: drag.minW};
+    if (kind === 'rotate') live = {...live, angle: dragAngle(live.angle + delta * size / 10, state, center, refFrame)};
+    else if (kind === 'left') live = {...live, left: dragLeft(live.left + delta * size, state, center, refFrame)};
+    else if (kind === 'right') live = {...live, right: dragRight(live.right + delta * size, state, center, refFrame)};
+    else if (kind === 'top') live = {...live, top: dragTop(live.top + delta * size, state, center, refFrame)};
+    else live = {...live, bottom: dragBottom(live.bottom + delta * size, state, center, refFrame)};
+    drag.moved = true;
+    scheduleKeySave();
+  }
+  function keyMarker(kind, event) {
+    const step = arrows[event.key]?.[0];
+    if (!step || !markerEditable) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!markerDrag) { markerDrag = {kind, keyboard: true, start: {...markerLive}, moved: false}; ondrag(true); }
+    const delta = step * (event.shiftKey ? 10 : 1);
+    markerLive = dragMarker(kind, markerLive, kind === 'left' ? markerLive.x0 + delta : kind === 'right' ? markerLive.x1 + delta : delta);
+    markerDrag.moved = true;
+    scheduleKeySave();
+  }
+  function keyRelease() {
+    clearTimeout(keyTimer);
+    if (markerDrag?.keyboard) endMarker();
+    else if (drag?.keyboard) endHandle();
+  }
   async function resetMarker() {
     if (panel && onmarker) await onmarker(panel.panel_id, null);
   }
@@ -418,7 +463,7 @@
       <svg bind:this={svg} class="canvas" viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`} preserveAspectRatio="xMidYMid meet"
         bind:clientWidth={viewerWidth} bind:clientHeight={viewerHeight} data-fit={fitMode} data-zoom={zoom.toFixed(3)} data-mode={mode}
         data-draw={drawMode || ''} class:zoomed={!!vb && !drawMode} class:panning={pan?.moved} class:drawing={!!drawMode}
-        aria-label="元画像" role="img" use:wheelZoom
+        aria-label="元画像" role="group" use:wheelZoom
         on:pointerdown={startPan} on:pointermove={movePan} on:pointerup={endPan} on:pointercancel={endPan} on:dblclick={reset}>
         <image preserveAspectRatio="none" href={frameUrl(display.frame.frame_id)} width={display.frame.width} height={display.frame.height}/>
         {#if display.overlay}
@@ -436,7 +481,9 @@
               role="button" tabindex="0" aria-label="別の段" on:click={clicked(() => onselect(c.id))} on:keydown={keyed(() => onselect(c.id))}/>
           {/each}
           {#if markerCrop}<polygon class="marker-crop" class:editable={markerEditable} data-marker-crop points={pointsAttribute(markerCrop)} vector-effect="non-scaling-stroke"
-            role="button" tabindex="-1" aria-label="マーカーを横に動かす" on:pointerdown={event => startMarker('move', event)}/>{/if}
+            role="slider" tabindex={markerShown ? 0 : -1} aria-label="マーカーの位置" aria-orientation="horizontal"
+            aria-valuemin={0} aria-valuemax={Math.round(refFrame?.width || 0)} aria-valuenow={Math.round(markerLive.x0)}
+            on:pointerdown={event => startMarker('move', event)} on:keydown={event => keyMarker('move', event)} on:blur={keyRelease}/>{/if}
           {#if chosen}<polygon class="chosen" points={pointsAttribute(chosen)} vector-effect="non-scaling-stroke"/>{/if}
         {/if}
         {#if draftPoints}<polygon class="draft-box" class:invalid={!draft?.valid} points={pointsAttribute(draftPoints)} vector-effect="non-scaling-stroke"/>{/if}
@@ -447,11 +494,15 @@
           {#each [['left', markerHandles.left], ['right', markerHandles.right]] as [kind, point]}
             <rect class="side-handle marker" data-marker-handle={kind} x={point[0] - 4 / scale} y={point[1] - 9 / scale}
               width={8 / scale} height={18 / scale} rx={2.5 / scale} vector-effect="non-scaling-stroke"
-              role="button" tabindex="-1" aria-label={markerHandleNames[kind]} on:pointerdown={event => startMarker(kind, event)}/>
+              role="slider" tabindex="0" aria-label={markerHandleNames[kind]} aria-orientation="horizontal"
+              aria-valuemin={0} aria-valuemax={Math.round(refFrame?.width || 0)} aria-valuenow={Math.round(kind === 'left' ? markerLive.x0 : markerLive.x1)}
+              on:pointerdown={event => startMarker(kind, event)} on:keydown={event => keyMarker(kind, event)} on:blur={keyRelease}/>
           {/each}
           {#each [['top', markerHandles.top], ['bottom', markerHandles.bottom]] as [kind, point]}
             <circle class="handle marker" data-marker-handle={kind} cx={point[0]} cy={point[1]} r={7 / scale} vector-effect="non-scaling-stroke"
-              role="button" tabindex="-1" aria-label={markerHandleNames[kind]} on:pointerdown={event => startHandle(kind, event, true)}/>
+              role="slider" tabindex="0" aria-label={markerHandleNames[kind]} aria-orientation="vertical"
+              aria-valuemin={0} aria-valuemax={Math.round(refFrame?.height || 0)} aria-valuenow={Math.round(live[kind])}
+              on:pointerdown={event => startHandle(kind, event, true)} on:keydown={event => keyHandle(kind, event, true)} on:blur={keyRelease}/>
           {/each}
         {/if}
         {#if handles}
@@ -459,11 +510,17 @@
           {#each [['left', handles.left], ['right', handles.right]] as [kind, point]}
             <rect class={`side-handle ${kind}`} data-side-handle={kind} x={point[0] - 4 / scale} y={point[1] - 9 / scale}
               width={8 / scale} height={18 / scale} rx={2.5 / scale} vector-effect="non-scaling-stroke"
-              role="button" tabindex="-1" aria-label={handleNames[kind]} on:pointerdown={event => startHandle(kind, event)}/>
+              role="slider" tabindex="0" aria-label={handleNames[kind]} aria-orientation="horizontal"
+              aria-valuemin={0} aria-valuemax={Math.round(refFrame?.width || 0)} aria-valuenow={Math.round(live[kind])}
+              on:pointerdown={event => startHandle(kind, event)} on:keydown={event => keyHandle(kind, event)} on:blur={keyRelease}/>
           {/each}
           {#each [['top', handles.top], ['bottom', handles.bottom], ['rotate', handles.rotate]] as [kind, point]}
             <circle class={`handle ${kind}`} data-handle={kind} cx={point[0]} cy={point[1]} r={8 / scale} vector-effect="non-scaling-stroke"
-              role="button" tabindex="-1" aria-label={handleNames[kind]} on:pointerdown={event => startHandle(kind, event)}/>
+              role="slider" tabindex="0" aria-label={handleNames[kind]} aria-orientation={kind === 'rotate' ? 'horizontal' : 'vertical'}
+              aria-valuemin={kind === 'rotate' ? -25 : 0} aria-valuemax={kind === 'rotate' ? 25 : Math.round(refFrame?.height || 0)}
+              aria-valuenow={kind === 'rotate' ? Number(live.angle.toFixed(1)) : Math.round(live[kind])}
+              aria-valuetext={kind === 'rotate' ? angleLabel : undefined}
+              on:pointerdown={event => startHandle(kind, event)} on:keydown={event => keyHandle(kind, event)} on:blur={keyRelease}/>
           {/each}
         {/if}
       </svg>
@@ -476,17 +533,18 @@
   .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; flex-wrap: wrap; border-bottom: 1px solid var(--border); background: #fff; }
   .grow { flex: 1; }
   .angle-wrap { position: relative; display: inline-flex; align-items: center; }
-  .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; background: #eef3f4; border-radius: 99px; padding: 2px 9px; white-space: nowrap; }
-  .step, .angle-btn { border: 0; background: transparent; padding: 1px 5px; font-size: 12px; line-height: 1.2; border-radius: 5px; color: #193238; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-meta); background: #eef3f4; border-radius: 99px; padding: 2px 9px; white-space: nowrap; }
+  .step, .angle-btn { border: 0; background: transparent; padding: 1px 5px; font-size: var(--text-meta); line-height: 1.2; border-radius: 5px; color: #193238; }
   .step:hover:not(:disabled), .angle-btn:hover:not(:disabled) { background: #dce8ea; }
   .angle-btn[aria-expanded='true'] { background: var(--teal); color: #fff; }
+  .angle-btn b { font-weight: 600; }
   .angle-pop { position: absolute; top: calc(100% + 5px); left: 0; z-index: 20; display: flex; align-items: center; gap: 6px; padding: 6px 9px;
     background: #fff; border: 1px solid #c5d2d7; border-radius: 8px; box-shadow: 0 6px 18px rgba(15, 35, 42, 0.14); }
   .angle-slider { width: 132px; padding: 0; }
-  .mini { font-size: 11px; padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
-  .draw-hint { font-size: 11px; color: #0b6b5f; background: #eaf7f3; border-radius: 99px; padding: 2px 9px; white-space: nowrap; }
+  .mini { font-size: var(--text-meta); padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
+  .draw-hint { font-size: var(--text-meta); color: #0b6b5f; background: #eaf7f3; border-radius: 99px; padding: 2px 9px; white-space: nowrap; }
   .seg { display: inline-flex; border: 1px solid #c8d3d8; border-radius: 7px; overflow: hidden; }
-  .seg button { border: 0; border-radius: 0; padding: 3px 11px; font-size: 12px; background: #fff; }
+  .seg button { border: 0; border-radius: 0; padding: 3px 11px; font-size: var(--text-meta); background: #fff; }
   .seg button[aria-pressed='true'] { background: var(--teal); color: #fff; }
   .seg button + button { border-left: 1px solid #c8d3d8; }
   .seg .view { display: inline-flex; align-items: center; justify-content: center; min-width: 38px; height: 26px; }
@@ -497,13 +555,13 @@
   .dot.merged { margin-left: -6px; }
   .opacity { width: 80px; padding: 0; }
   .icon[aria-pressed='true'] { background: #e1f1f1; }
-  .confirm { font-size: 12px; padding: 3px 11px; border-radius: 99px; color: #0b6b5f; border-color: #8fc5bb; background: #eaf7f3; }
+  .confirm { font-size: var(--text-meta); padding: 3px 11px; border-radius: 99px; color: #0b6b5f; border-color: #8fc5bb; background: #eaf7f3; }
   .stage { flex: 1; min-height: 340px; background: #1c2428; position: relative; }
   .canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; user-select: none; }
   .canvas.zoomed { cursor: grab; }
   .canvas.panning { cursor: grabbing; }
   .canvas.drawing { cursor: crosshair; }
-  .blank { color: #6d7f87; display: grid; place-items: center; height: 100%; font-size: 40px; }
+  .blank { color: #6d7f87; display: grid; place-items: center; height: 100%; font-size: var(--text-label); }
   polygon { fill: transparent; stroke-width: 2; }
   polygon.passive { pointer-events: none; }
   polygon.membrane { stroke: #62c1b6; fill: #62c1b608; cursor: pointer; }
@@ -522,6 +580,10 @@
   .handle { fill: #fff; stroke: #0aa8a0; stroke-width: 2.5; cursor: ns-resize; }
   .handle.rotate { cursor: grab; fill: #36e0d6; }
   .side-handle { fill: #fff; stroke: #0aa8a0; stroke-width: 2; cursor: ew-resize; }
+  /* Keyboard focus on the image: a bright ring that differs from the teal crop and orange marker. */
+  polygon:focus, .handle:focus, .side-handle:focus { outline: none; }
+  .canvas polygon:focus-visible { stroke: #ffd23f; stroke-width: 3.5; }
+  .canvas .handle:focus-visible, .canvas .side-handle:focus-visible { stroke: #ffd23f; stroke-width: 4; }
   .flicker { animation: flicker 1.5s steps(1) infinite; }
   @keyframes flicker { 50% { opacity: 0 !important; } }
   @media (prefers-reduced-motion: reduce) { .flicker { animation-duration: 4s; } }

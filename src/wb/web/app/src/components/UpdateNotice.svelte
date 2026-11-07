@@ -66,9 +66,9 @@
 <style>
   .update { position: fixed; top: 52px; right: 16px; z-index: 50; width: min(380px, calc(100vw - 32px)); padding: 12px 14px;
     background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, .12); }
-  p { margin: 0 0 8px; }
+  p { margin: 0 0 8px; text-wrap: pretty; }
   .title { font-weight: 600; color: var(--teal); }
   .error { color: #b4553a; }
-  code { display: block; margin-bottom: 8px; padding: 6px 8px; font-size: 11px; background: #f4f6f6; border-radius: 4px; word-break: break-all; user-select: all; }
+  code { display: block; margin-bottom: 8px; padding: 6px 8px; font: var(--text-meta)/1.5 var(--font-mono); background: #f4f6f6; border-radius: 4px; word-break: break-all; user-select: all; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; }
 </style>

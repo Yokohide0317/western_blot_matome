@@ -164,7 +164,7 @@
   .row { display: grid; grid-template-columns: 196px minmax(0, 1fr); column-gap: 12px; row-gap: 4px; padding: 8px; border: 2px solid transparent; border-radius: 8px; cursor: pointer; align-items: start; }
   .row.readonly { cursor: pointer; }
   .row.readonly .controls { opacity: .55; }
-  .membrane-id { grid-column: 2; justify-self: end; color: var(--muted); font: 12px/16px ui-monospace, monospace; }
+  .membrane-id { grid-column: 2; justify-self: end; color: var(--muted); font: var(--text-meta)/16px var(--font-mono); }
   .row.readonly:hover { background: #f5f7f7; }
   .grip.off { cursor: default; opacity: .4; }
   .lane-edge { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #f2b24a; pointer-events: none; }
@@ -174,16 +174,16 @@
   .row.selected { border-color: #b6c9c9; background: #f5f7f7; }
   .line { display: flex; align-items: center; gap: 4px; }
   .grip { cursor: grab; color: #8a9aa2; font-size: 16px; padding: 0 2px; user-select: none; touch-action: none; }
-  .selection-prefix { font-size: 11px; color: var(--muted); }
-  .inline-label { flex: 1 1 auto; width: 100%; font-weight: 600; font-size: 14px; padding: 4px 6px; border-color: transparent; background: transparent; min-width: 0; text-overflow: ellipsis; }
+  .selection-prefix { font-size: var(--text-meta); color: var(--muted); }
+  .inline-label { flex: 1 1 auto; width: 100%; font-weight: 600; font-size: var(--text-label); padding: 4px 6px; border-color: transparent; background: transparent; min-width: 0; text-overflow: ellipsis; }
   .inline-label:hover, .inline-label:focus { border-color: #c5d0d7; background: #fff; }
   .icons { display: flex; gap: 3px; margin-top: 4px; padding-left: 22px; }
-  .icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; font-size: 13px; line-height: 1; border-radius: 6px; color: #5d717c; }
+  .icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; font-size: var(--text-body); line-height: 1; border-radius: 6px; color: #5d717c; }
   .visual { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
   .blot { position: relative; min-width: 0; }
   .blot img { display: block; width: 100%; height: auto; background: #f3f5f6; }
   .marker { flex: 0 1 auto; min-width: 0; overflow: hidden; border-left: 1px solid #d5e2e6; padding-left: 4px; }
   .marker img { display: block; width: auto; max-width: 100%; height: auto; background: #f3f5f6; }
-  .compare { position: absolute; top: 3px; right: 3px; font-size: 10px; background: #2c4a63; color: #fff; border-radius: 99px; padding: 0 7px; }
-  .unset { border: 1px dashed #c5cdd2; color: #8a98a0; font-size: 12px; text-align: center; padding: 10px; }
+  .compare { position: absolute; top: 3px; right: 3px; font-size: var(--text-caption); font-weight: 600; line-height: 16px; background: #2c4a63; color: #fff; border-radius: 99px; padding: 0 7px; }
+  .unset { border: 1px dashed #c5cdd2; color: var(--muted); font-size: var(--text-meta); text-align: center; padding: 10px; }
 </style>

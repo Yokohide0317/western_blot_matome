@@ -1,7 +1,17 @@
-:root { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; color: #202526; background: #fafafa; font-synthesis: none; font-variant-numeric: tabular-nums; --teal: #286b6c; --border: #e1e4e4; --secondary: #515b5d; --muted: #737b7d; }
+:root {
+  /* Type: one family (the platform UI face, with Japanese faces for macOS and Windows) and five sizes.
+     caption = Latin-only badges; meta = secondary text and compact controls; body = text and controls;
+     label = names of membranes, rows and projects; title = the app name. Japanese text is never below meta. */
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Segoe UI', 'Yu Gothic UI', Meiryo, 'Noto Sans JP', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --text-caption: 11px; --text-meta: 12px; --text-body: 13px; --text-label: 14px; --text-title: 16px;
+  font-family: var(--font-ui); color: #202526; background: #fafafa; font-synthesis: none; font-variant-numeric: tabular-nums;
+  --teal: #286b6c; --border: #e1e4e4; --secondary: #515b5d; --muted: #646c6e;
+}
+::selection { background: #cfe5e3; color: #193238; }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
-body { margin: 0; font-size: 13px; line-height: 1.5; }
+body { margin: 0; font-size: var(--text-body); line-height: 1.5; }
 #app { height: 100%; }
 button, input, select { font: inherit; }
 button { cursor: pointer; border: 1px solid #cbd6dc; background: white; color: #263c49; border-radius: 4px; padding: 4px 12px; font-weight: 500; transition: background .15s; }
@@ -19,20 +29,20 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .empty { grid-column: 1 / -1; display: grid; place-items: center; }
 .workspace > section[aria-label='図'] { display: flex; flex-direction: column; }
 .stage-tabs { display: flex; gap: 4px; padding: 8px 16px 0; border-bottom: 1px solid var(--border); }
-.stage-tabs button { border: 0; border-radius: 7px 7px 0 0; padding: 8px 12px; font-size: 12px; background: transparent; color: #5d717c; }
-.stage-tabs button[aria-selected='true'] { background: #fff; color: var(--teal); box-shadow: inset 0 -2px 0 var(--teal); }
+.stage-tabs button { border: 0; border-radius: 7px 7px 0 0; padding: 8px 12px; font-size: var(--text-body); background: transparent; color: #5d717c; }
+.stage-tabs button[aria-selected='true'] { background: #fff; color: var(--teal); font-weight: 600; box-shadow: inset 0 -2px 0 var(--teal); }
 .membrane-list { display: flex; flex-direction: column; gap: 8px; padding: 16px; overflow: auto; }
 .membrane-item { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-radius: 8px; text-align: left; }
 .membrane-item.active { border-color: var(--teal); background: #f5f7f7; }
 .membrane-item.excluded { color: var(--muted); }
-.membrane-item .m-label { font-weight: 600; font-size: 14px; }
-.membrane-item .m-status { font-size: 11px; color: #6a7c85; }
-.m-hint { font-size: 11px; color: #6a7c85; margin: 2px 0 0; }
+.membrane-item .m-label { font-weight: 600; font-size: var(--text-label); }
+.membrane-item .m-status { font-size: var(--text-meta); color: var(--muted); }
+.m-hint { font-size: var(--text-meta); color: var(--muted); margin: 2px 0 0; text-wrap: pretty; }
 .membrane-list .next { align-self: flex-end; margin-top: 6px; }
-.empty button { font-size: 16px; padding: 12px 28px; }
+.empty button { font-size: var(--text-title); padding: 12px 28px; }
 .toast { position: fixed; bottom: 112px; left: 50%; transform: translateX(-50%); background: #1e3d49; color: white; padding: 8px 18px; border-radius: 8px; box-shadow: 0 8px 24px #0000000f; max-width: 90vw; z-index: 30; display: flex; gap: 8px; align-items: center; }
 .toast.error { background: #a33b32; }
-.toast code { overflow-wrap: anywhere; font-size: 12px; }
+.toast code { overflow-wrap: anywhere; font: var(--text-meta)/1.5 var(--font-mono); }
 @media (max-width: 900px) {
   .workbench { height: auto; min-height: 100vh; }
   .workspace { grid-template-columns: 1fr; }
@@ -53,16 +63,16 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .membrane-switch[aria-checked='true']:hover:enabled { background: #30b350; }
 .switch-knob { display: block; width: 20px; height: 20px; border-radius: 50%; background: white; box-shadow: 0 1px 3px #0003; transition: transform 150ms; }
 .membrane-switch[aria-checked='true'] .switch-knob { transform: translateX(16px); }
-.master-control { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 12px 16px 0; padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px; background: #f7f9f9; font-size: 12px; }
-.master-title { font-weight: 700; color: #33474f; }
+.master-control { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 12px 16px 0; padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px; background: #f7f9f9; font-size: var(--text-meta); }
+.master-title { font-weight: 600; color: #33474f; }
 .master-item { display: inline-flex; align-items: center; gap: 4px; color: #52666f; }
 .master-item b { min-width: 28px; text-align: center; color: #193238; }
 .master-control .icon { width: 24px; height: 24px; padding: 0; line-height: 1; border-radius: 6px; }
-.master-control .add-lane { font-size: 12px; padding: 3px 10px; border-radius: 4px; }
+.master-control .add-lane { font-size: var(--text-meta); padding: 3px 10px; border-radius: 4px; }
 @media (prefers-reduced-motion: reduce) { .membrane-switch, .switch-knob { transition: none; } }
 
 .selection-name { flex: 1; text-align: left; border: 0; background: transparent; }
 .membrane-row.selected { background: #f1f4f4; border-radius: 4px; }
-.edit-selection { font-size: 12px; padding: 2px 8px; border-color: transparent; background: transparent; }
+.edit-selection { font-size: var(--text-meta); padding: 2px 8px; border-color: transparent; background: transparent; }
 .add-selection, .add-membrane { width: 32px; height: 28px; padding: 0; font-size: 20px; border-color: transparent; background: transparent; }
 .add-selection { margin-top: 4px; }

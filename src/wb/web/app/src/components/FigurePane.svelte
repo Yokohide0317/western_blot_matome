@@ -150,17 +150,17 @@
 <style>
   .figure { display: flex; flex-direction: column; gap: 12px; padding: 16px; flex: 1; min-height: 0; overflow: auto; }
   .lane-editor { background: #f4f5f5; border-radius: 8px 8px 0 0; }
-  .lane-note { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .lane-note { font-size: var(--text-meta); color: var(--muted); white-space: nowrap; }
   .sheet { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
   .lanes { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 12px; padding: 8px; border: 2px solid transparent; border-radius: 8px; align-items: center; }
-  .stepper { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-start; padding-left: 22px; font-size: 12px; }
+  .stepper { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-start; padding-left: 22px; font-size: var(--text-meta); }
   .count { color: #52666f; white-space: nowrap; }
   .icon { width: 24px; min-width: 24px; height: 24px; padding: 0; line-height: 1; border-radius: 6px; }
-  .add-lane { font-size: 12px; padding: 4px 12px; border-radius: 4px; }
+  .add-lane { font-size: var(--text-meta); padding: 4px 12px; border-radius: 4px; }
   .lane-visual { display: flex; }
   .cells { flex: 0 0 74%; display: grid; gap: 0; min-width: 0; }
   .cells.spanned { display: block; position: relative; height: 30px; }
-  .lane-name { text-align: center; padding: 3px 1px; font-size: 12px; border-radius: 0; border-color: #d4dcE0; min-width: 0; }
+  .lane-name { text-align: center; padding: 3px 1px; font-size: var(--text-meta); border-radius: 0; border-color: #d4dcE0; min-width: 0; }
   .rows { display: flex; flex-direction: column; gap: 2px; }
   .slot { border-radius: 8px; }
   .slot.over { box-shadow: 0 -3px 0 var(--teal); }

@@ -13,7 +13,8 @@ description: Western blot・ウェスタンブロットの図をChemiDocのZIP�
 2. どれも無ければ、利用者に「Western Blot Matomeを導入します」と伝えて了承を得てから、次の1行を実行する（Xcode Command Line Tools・Python・git・Node.jsは不要。uvが無ければ自動で入る）。
    - macOS / Linux: `curl -LsSf https://github.com/Yokohide0317/western_blot_matome/releases/latest/download/install.sh | sh`
    - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://github.com/Yokohide0317/western_blot_matome/releases/latest/download/install.ps1 | iex"`
-3. 更新も同じ1行で行う。`wbm install-skill` はこのSkillを `~/.claude/skills`・`~/.codex/skills`・`~/.agents/skills` に入れる（`--claude`／`--codex`／`--agents` で個別指定）。
+3. 導入済みなら `wbm update --check --json` で新しいバージョンを確認する（GitHubに問い合わせる。利用者が設定で確認を止めていれば `check` が false で、何もしない）。`available` が true なら「新しいバージョン v<latest> があります（現在 v<current>）」と伝え、了承を得てから `wbm update --json` を実行する。更新は裏で進み、サーバーは止まって更新後に起動し直す。1分ほど待ってから `wbm --version` で新しい番号になったことを確かめる（まだ古ければもう少し待つ。記録は戻り値の `log`）。`can_apply` が false なら `reason` を伝えて判断を任せる（uvで入れた通常の導入なら、上の1行＝戻り値の `command` を実行し直しても更新できる）。
+4. `wbm install-skill` はこのSkillを `~/.claude/skills`・`~/.codex/skills`・`~/.agents/skills` に入れる（`--claude`／`--codex`／`--agents` で個別指定）。
 
 Claudeアプリの「Code」タブでは、データ（ZIPやフォルダ）がセッションのフォルダ外にあると読み書きの許可を求められる。必要なら最初にデータのフォルダをセッションに追加するよう利用者に頼む。
 

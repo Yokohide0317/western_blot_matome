@@ -7,13 +7,14 @@ ChemiDocのウェスタンブロット画像から、論文・発表用の図（
 ## 利用上の注意
 
 - このツールは手元のPC上（`127.0.0.1`）で動きます。画像やデータを、このリポジトリの管理者のサーバーなど外部へ送ったり保存したりすることはありません。
+- 新しいバージョンがあるかを、1日1回 GitHub に確認します（送るのは確認の要求だけで、画像やデータは送りません）。止めるときは `wbm config --init` で設定ファイル（`config.toml`）を作り、`[update]` の `check = false` にします。
 - ただし、Claude・Codex などのAIエージェントと一緒に使うと、作業の過程で画像、ファイル名、会話の内容がAIの提供元へ送信されます。提供元の設定や規約によっては、保存されたり学習に使われたりする場合があります。各提供元のプライバシーポリシーとデータの設定を確認してからご利用ください。
 - 図の内容（切り出し範囲、露光、ラベルなど）は、必ず元の画像と照らし合わせて確認してください。
 - 本ツールは無保証で提供します。利用によって生じたいかなる損害や不利益についても、リポジトリの管理者およびコントリビューターは責任を負いません。ご自身の責任でご利用ください。
 
 ## インストール
 
-Xcode Command Line Tools・Python・git・Node.js は不要です（[uv](https://docs.astral.sh/uv/) が無ければ自動で入ります）。更新も同じ1行です。
+Xcode Command Line Tools・Python・git・Node.js は不要です（[uv](https://docs.astral.sh/uv/) が無ければ自動で入ります）。
 
 macOS:
 
@@ -26,6 +27,10 @@ Windows（PowerShell）:
 ```powershell
 powershell -ExecutionPolicy ByPass -c "irm https://github.com/Yokohide0317/western_blot_matome/releases/latest/download/install.ps1 | iex"
 ```
+
+### 更新
+
+新しいバージョンが出ると、画面に「新しいバージョン vX があります」と出ます。「更新する」を押すと裏で更新し、1分ほどでページが読み込み直されます。ほかに、`wbm update`（確認だけなら `wbm update --check`）を実行するか、上のインストールの1行をもう一度実行しても更新できます。
 
 ## Skillの導入
 
@@ -128,6 +133,8 @@ wbm status                                    # 採用画像と編集状態
 wbm open                                      # 画面を開く（共有サーバーを起動）
 wbm recent                                    # 最近開いたプロジェクト
 wbm stop                                      # サーバーを停止（2時間使わなければ自動停止）
+wbm start                                     # サーバーを起動してURLを表示
+wbm update --check                            # 新しいバージョンを確認（wbm update で更新）
 
 wbm rename A "Protein A"                      # ラベル
 wbm set-exposure A CAP_IMG049                 # 採用露光

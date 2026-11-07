@@ -97,7 +97,9 @@ def _is_ours(state):
     """The hub on that port is the one we started: same token and pid."""
     from wb.hub import HUB_NAME
 
-    return _identity(state["port"]) == {"app": HUB_NAME, "pid": state["pid"], "token": state.get("token")}
+    identity = _identity(state["port"])
+    expected = {"app": HUB_NAME, "pid": state["pid"], "token": state.get("token")}
+    return isinstance(identity, dict) and all(identity.get(key) == value for key, value in expected.items())
 
 
 def _listener():

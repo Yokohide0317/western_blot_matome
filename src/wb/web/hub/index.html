@@ -39,6 +39,15 @@
   .empty { padding: 14px; color: var(--muted); }
   footer { font-size: 12px; color: var(--muted); line-height: 1.7; border-top: 1px solid var(--border); padding-top: 12px; }
   footer a { color: var(--teal); }
+  .update { position: fixed; right: 16px; bottom: 16px; z-index: 10; width: min(400px, calc(100vw - 32px)); padding: 14px 16px;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 6px 24px rgba(0, 0, 0, .12); }
+  .update p { margin: 0 0 8px; }
+  .update .title { font-weight: 600; color: var(--teal); }
+  .update .error { color: #b4553a; }
+  .update code { display: block; margin-bottom: 8px; padding: 6px 8px; font-size: 12px; background: var(--bg); border-radius: 6px; word-break: break-all; user-select: all; }
+  .update .actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .update button { font: inherit; padding: 5px 14px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text); cursor: pointer; }
+  .update button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
   @media (max-width: 560px) { .open { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -67,6 +76,7 @@
     <a href="https://github.com/Yokohide0317/western_blot_matome#利用上の注意" target="_blank" rel="noopener">詳しく</a>
   </footer>
 </main>
+<div class="update" id="update" role="dialog" aria-label="更新のお知らせ" hidden></div>
 <script>
   const status = document.getElementById('status');
   const buttons = [...document.querySelectorAll('button.big')];
@@ -126,6 +136,51 @@
     }));
   }
   loadRecent().catch(() => say('一覧を読み込めませんでした', true));
+
+  // Update notice: shown when GitHub has a newer release; 「あとで」 hides that version for good.
+  const DISMISSED = 'wbm.update.dismissed';
+  const dismissed = () => { try { return localStorage.getItem(DISMISSED); } catch { return null; } };
+  const dismiss = version => { try { localStorage.setItem(DISMISSED, version); } catch { /* ask again next time */ } };
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  function showUpdate(info, {updating = false, error = ''} = {}) {
+    const box = document.getElementById('update');
+    box.hidden = false;
+    box.innerHTML = `<p class="title">新しいバージョン v${esc(info.latest)} があります（現在 v${esc(info.current)}）</p>` + (updating
+      ? '<p>更新中…（1分ほどかかります）</p>'
+      : (info.can_apply ? '' : `<p>${esc(info.reason)}</p><code>${esc(info.command)}</code>`)
+        + (error ? `<p class="error">${esc(error)}</p>` : '')
+        + '<div class="actions">'
+        + (info.can_apply && !error ? '<button class="primary" type="button" data-act="apply">更新する</button>' : '')
+        + '<button type="button" data-act="later">あとで</button></div>');
+    box.querySelector('[data-act="later"]')?.addEventListener('click', () => { dismiss(info.latest); box.hidden = true; });
+    box.querySelector('[data-act="apply"]')?.addEventListener('click', () => applyUpdate(info));
+  }
+
+  async function applyUpdate(info) {
+    showUpdate(info, {updating: true});
+    try {
+      const response = await fetch('api/hub/update', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || '更新を始められませんでした');
+    } catch (error) {
+      showUpdate(info, {error: error.message});
+      return;
+    }
+    const deadline = Date.now() + 3 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await sleep(2000);
+      try {
+        const hub = await (await fetch('api/hub', {cache: 'no-store'})).json();
+        if (hub.version === info.latest) { location.reload(); return; }
+      } catch { /* the server is restarting */ }
+    }
+    showUpdate(info, {error: `更新を確認できませんでした。しばらくしてからページを再読み込みしてください（記録: ${info.log}）`});
+  }
+
+  fetch('api/hub/update').then(response => response.ok ? response.json() : null).then(info => {
+    if (info && info.available && info.latest && info.latest !== dismissed()) showUpdate(info);
+  }).catch(() => {});
 </script>
 </body>
 </html>

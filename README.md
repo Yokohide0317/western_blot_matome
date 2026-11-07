@@ -14,7 +14,18 @@ ChemiDocのウェスタンブロット画像から、論文・発表用の図（
 
 ## インストール
 
-Xcode Command Line Tools・Python・git・Node.js は不要です（[uv](https://docs.astral.sh/uv/) が無ければ自動で入ります）。
+コマンドを自分で打つ必要はありません。Claudeアプリの「Code」タブ（または Claude Code / Codex）で、次のように頼みます。
+
+> https://github.com/Yokohide0317/western_blot_matome のREADMEを読んで、ツールとSkillを導入して
+
+エージェントが下の「[AIエージェント向けの導入手順](#aiエージェント向けの導入手順)」に沿って、ツール（`wbm`）とAI用のSkill「wblot」を入れます。コマンドの実行の許可を求められたら、内容を確かめて許可してください。
+
+### 更新
+
+新しいバージョンが出ると、画面に「新しいバージョン vX があります」と出ます。「更新する」を押すと裏で更新し、1分ほどでページが読み込み直されます。エージェントに「wbmを更新して」と頼んでも更新できます。
+
+<details>
+<summary>自分でコマンドを実行して入れる場合</summary>
 
 macOS:
 
@@ -28,25 +39,42 @@ Windows（PowerShell）:
 powershell -ExecutionPolicy ByPass -c "irm https://github.com/Yokohide0317/western_blot_matome/releases/latest/download/install.ps1 | iex"
 ```
 
-### 更新
-
-新しいバージョンが出ると、画面に「新しいバージョン vX があります」と出ます。「更新する」を押すと裏で更新し、1分ほどでページが読み込み直されます。ほかに、`wbm update`（確認だけなら `wbm update --check`）を実行するか、上のインストールの1行をもう一度実行しても更新できます。
-
-## Skillの導入
-
-上のインストールで、AI用のSkill「wblot」も次の場所に入ります。手作業は不要です。
+Xcode Command Line Tools・Python・git・Node.js は不要です（[uv](https://docs.astral.sh/uv/) が無ければ自動で入ります）。Skillも次の場所に一緒に入ります。
 
 - Claude Code: `~/.claude/skills/wblot`
 - Codex: `~/.codex/skills/wblot`、`~/.agents/skills/wblot`
 
-入れ直すときや、片方だけに入れるときは次を実行します。
+更新は `wbm update`（確認だけなら `wbm update --check`）か、同じ1行をもう一度実行します。Skillだけを入れ直すときは `wbm install-skill`（`--claude` / `--codex` / `--agents` で個別に指定）を実行します。
 
-```bash
-wbm install-skill            # すべて
-wbm install-skill --claude   # Claude Code だけ（--codex / --agents も可）
-```
+</details>
 
-まだ `wbm` を入れていないPCでも、Skillだけ置いてあれば、エージェントが了承を得てからインストールします。
+## AIエージェント向けの導入手順
+
+> このセクションは、利用者に「READMEを読んで、ツールとSkillを導入して」と頼まれたAIエージェント（Claude Code、Codex など）への指示です。利用者は読み飛ばしてかまいません。
+
+利用者はコマンドに慣れていない研究者の場合があります。説明は短く日本語で、専門用語を避けてください。
+
+1. **了承を得る。** 次の3点を短く伝え、了承を得てから進めます。
+   - 入れるもの：コマンド `wbm` と、AI用のSkill「wblot」（`~/.claude/skills`、`~/.codex/skills`、`~/.agents/skills`）。uv が無ければ uv も入ります。管理者権限は使いません。
+   - ツールは手元のPC上で動き、画像やデータを外部のサーバーへ送りません。ただし、AIと一緒に使うと画像や会話の内容がAIの提供元へ送られ、設定によっては保存されることがあります（上の「利用上の注意」）。
+   - 新しいバージョンがあるかを1日1回 GitHub に確認します（設定で止められます）。
+2. **入っているか確かめる。** `wbm --version` を実行します。見つからなければ、macOS / Linux は `~/.local/bin/wbm --version`、Windows は `%USERPROFILE%\.local\bin\wbm.exe --version` を試します（アプリから実行するシェルでは `~/.local/bin` がPATHに無いことがあります。見つかった絶対パスを以後も使います）。
+   - 入っていれば、`wbm update --check --json` で新しいバージョンを確かめます。`available` が true なら、了承を得て `wbm update --json` を実行し、1分ほど待ってから `wbm --version` で番号が変わったことを確かめます。`wbm update` が無い古い版なら、手順3の1行を実行し直せば更新されます。続けて `wbm install-skill` でSkillを入れ直し、手順4へ進みます。
+3. **入れる。** OSに合わせて、次の1行だけを実行します。
+   - macOS / Linux: `curl -LsSf https://github.com/Yokohide0317/western_blot_matome/releases/latest/download/install.sh | sh`
+   - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://github.com/Yokohide0317/western_blot_matome/releases/latest/download/install.ps1 | iex"`
+
+   `sudo`、Homebrew、`pip`、リポジトリの clone など、ほかの方法は使いません（clone は開発用です）。失敗したら、表示されたエラーをそのまま短く伝えて止まり、別の方法を試す前に利用者に相談します。ネットワークやプロキシの制限でダウンロードできないことがあります。
+4. **確かめる。** 次の3つを確かめます。
+   - `wbm --version`（または手順2の絶対パス）がバージョンを表示する。
+   - `~/.claude/skills/wblot/SKILL.md` と `~/.codex/skills/wblot/SKILL.md` がある。
+   - `wbm config` がエラーにならない。
+5. **伝える。** 入ったバージョンと、次の使い方を伝えます。
+   - ChemiDocのZIPやフォルダの場所を添えて「ウェスタンの図にまとめて」と頼めば始められる。
+   - Skillが読み込まれていないときは、新しいセッション（会話）を始める。
+   - データのフォルダをセッションに追加しておくと、読み書きの許可を何度も聞かれずに済む。
+
+利用者のデータを、導入の確認のために開いたり送ったりしないでください。
 
 ## 使い方（Claude / Codex への頼み方）
 

@@ -1,0 +1,307 @@
+{
+  "proposal_format": 3,
+  "groups": [
+    {
+      "marker_frame_id": "FRAME_IMG050",
+      "image_set_ids": [
+        "S05"
+      ],
+      "reference_frame_id": "FRAME_IMG030",
+      "membranes": [
+        {
+          "label": "M1",
+          "polygon_marker_frame": [
+            [
+              515,
+              320
+            ],
+            [
+              1560,
+              320
+            ],
+            [
+              1560,
+              650
+            ],
+            [
+              515,
+              650
+            ]
+          ],
+          "polygon_reference_frame": [
+            [
+              515,
+              320
+            ],
+            [
+              1560,
+              320
+            ],
+            [
+              1560,
+              650
+            ],
+            [
+              515,
+              650
+            ]
+          ],
+          "rotation": {
+            "degrees": 1.5,
+            "center": [
+              1030,
+              650
+            ],
+            "method": "fixture",
+            "evidence": "synthetic"
+          },
+          "marker_lanes": {
+            "x0_rectified": 530,
+            "x1_rectified": 600,
+            "evidence": "fixture"
+          },
+          "sample_area": {
+            "x0_rectified": 650,
+            "x1_rectified": 1500
+          },
+          "lane_candidates": {
+            "centers_x_rectified": [
+              700,
+              800,
+              900
+            ],
+            "method": "fixture",
+            "status": "proposed"
+          },
+          "method": "fixture",
+          "parameters": {},
+          "evidence": "synthetic",
+          "panel_label": "A",
+          "row": {
+            "crop_rect_rectified": {
+              "x0": 650,
+              "y0": 350,
+              "x1": 1500,
+              "y1": 400
+            },
+            "band_row_y_rectified": 375.0,
+            "selected_exposure_id": "CAP_IMG031",
+            "exposure_reason": "fixture",
+            "red_pixels_in_crop_by_capture": {},
+            "evidence": "fixture",
+            "candidate_id": "M1_R1",
+            "score": 0.9
+          },
+          "row_candidates": [
+            {
+              "crop_rect_rectified": {
+                "x0": 650,
+                "y0": 350,
+                "x1": 1500,
+                "y1": 400
+              },
+              "band_row_y_rectified": 375.0,
+              "selected_exposure_id": "CAP_IMG031",
+              "exposure_reason": "fixture",
+              "red_pixels_in_crop_by_capture": {},
+              "evidence": "fixture",
+              "candidate_id": "M1_R1",
+              "score": 0.9
+            },
+            {
+              "crop_rect_rectified": {
+                "x0": 650,
+                "y0": 450,
+                "x1": 1500,
+                "y1": 500
+              },
+              "band_row_y_rectified": 475.0,
+              "selected_exposure_id": "CAP_IMG030",
+              "exposure_reason": "別の段で赤表示のない露光",
+              "red_pixels_in_crop_by_capture": {},
+              "evidence": "fixture",
+              "candidate_id": "M1_R2",
+              "score": 0.7
+            }
+          ]
+        },
+        {
+          "label": "M2",
+          "polygon_marker_frame": [
+            [
+              515,
+              660
+            ],
+            [
+              1560,
+              660
+            ],
+            [
+              1560,
+              975
+            ],
+            [
+              515,
+              975
+            ]
+          ],
+          "polygon_reference_frame": [
+            [
+              515,
+              660
+            ],
+            [
+              1560,
+              660
+            ],
+            [
+              1560,
+              975
+            ],
+            [
+              515,
+              975
+            ]
+          ],
+          "rotation": {
+            "degrees": 1.5,
+            "center": [
+              1030,
+              650
+            ],
+            "method": "fixture",
+            "evidence": "synthetic"
+          },
+          "marker_lanes": null,
+          "sample_area": {
+            "x0_rectified": 650,
+            "x1_rectified": 1500
+          },
+          "lane_candidates": {
+            "centers_x_rectified": [
+              700,
+              800,
+              900
+            ],
+            "method": "fixture",
+            "status": "proposed"
+          },
+          "method": "fixture",
+          "parameters": {},
+          "evidence": "synthetic",
+          "panel_label": "B",
+          "row": {
+            "crop_rect_rectified": {
+              "x0": 650,
+              "y0": 700,
+              "x1": 1500,
+              "y1": 750
+            },
+            "band_row_y_rectified": 725.0,
+            "selected_exposure_id": "CAP_IMG031",
+            "exposure_reason": "fixture",
+            "red_pixels_in_crop_by_capture": {},
+            "evidence": "fixture",
+            "candidate_id": "M2_R1",
+            "score": 0.9
+          },
+          "row_candidates": [
+            {
+              "crop_rect_rectified": {
+                "x0": 650,
+                "y0": 700,
+                "x1": 1500,
+                "y1": 750
+              },
+              "band_row_y_rectified": 725.0,
+              "selected_exposure_id": "CAP_IMG031",
+              "exposure_reason": "fixture",
+              "red_pixels_in_crop_by_capture": {},
+              "evidence": "fixture",
+              "candidate_id": "M2_R1",
+              "score": 0.9
+            },
+            {
+              "crop_rect_rectified": {
+                "x0": 650,
+                "y0": 800,
+                "x1": 1500,
+                "y1": 850
+              },
+              "band_row_y_rectified": 825.0,
+              "selected_exposure_id": "CAP_IMG030",
+              "exposure_reason": "別の段で赤表示のない露光",
+              "red_pixels_in_crop_by_capture": {},
+              "evidence": "fixture",
+              "candidate_id": "M2_R2",
+              "score": 0.7
+            }
+          ]
+        }
+      ],
+      "transforms": [
+        {
+          "kind": "marker_to_reference",
+          "from_frame_id": "FRAME_IMG050",
+          "to_frame_id": "FRAME_IMG030",
+          "matrix": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "method": "fixture",
+          "score": {}
+        },
+        {
+          "kind": "exposure_to_reference",
+          "from_frame_id": "FRAME_IMG031",
+          "to_frame_id": "FRAME_IMG030",
+          "matrix": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "method": "fixture",
+          "score": {}
+        }
+      ],
+      "warnings": [
+        "fixture warning"
+      ]
+    }
+  ],
+  "excluded_image_sets": [
+    {
+      "image_set_id": "S01",
+      "reason": "no registration"
+    }
+  ],
+  "unmatched_marker_frames": [],
+  "warnings": [
+    "global warning"
+  ]
+}

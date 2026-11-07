@@ -1,0 +1,214 @@
+<script>
+  import { onMount } from 'svelte';
+  import { request, isIncluded } from './lib/api.js';
+  import TopBar from './components/TopBar.svelte';
+  import FigurePane from './components/FigurePane.svelte';
+  import SourceCanvas from './components/SourceCanvas.svelte';
+  import ExposureStrip from './components/ExposureStrip.svelte';
+
+  let project = null, selectedPanelId = '', selectedRegionId = '', preview = null, mode = 'lum', manualEmpty = false;
+  let busy = false, dragging = false, polling = false, toast = null, toastTimer, queue = Promise.resolve();
+  let stage = 'membrane', drawRequest = null;
+  function addMembrane() { manualEmpty = true; drawRequest = {kind: 'membrane', token: Date.now()}; }
+  const editing = new Set();
+  $: panels = [...(project?.panels || [])].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+  $: if (panels.length) manualEmpty = false;
+  $: membranes = (project?.membrane_regions || []).map(region => ({region})).sort((a,b) => a.region.user_label.localeCompare(b.region.user_label, undefined, {numeric:true}));
+  // Band selection only shows membranes in the figure, so an excluded choice falls back to the first included one.
+  $: chosenRegion = project?.membrane_regions.find(r => r.region_id === selectedRegionId);
+  $: activeRegion = stage === 'band'
+    ? (chosenRegion?.included !== false && chosenRegion) || membranes.find(m => m.region.included !== false)?.region || membranes[0]?.region
+    : chosenRegion || membranes[0]?.region;
+  $: regionPanels = panels.filter(p => p.region_id === activeRegion?.region_id);
+  $: panel = regionPanels.find(p => p.panel_id === selectedPanelId) || regionPanels.find(isIncluded) || regionPanels[0];
+  $: canvasPanel = panel || (activeRegion ? {panel_id:null, region_id:activeRegion.region_id, image_set_id:activeRegion.image_set_id} : null);
+  $: if (preview && panel && !project.captures.some(c => c.capture_id === preview)) preview = null;
+
+  function notify(text, kind = 'info', path = '') {
+    toast = {text, kind, path};
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast = null, path ? 9000 : 4500);
+  }
+  const fail = e => notify(e.message || '読み込みに失敗しました', 'error');
+  async function load() {
+    const next = await request('project');
+    project = next;
+    if (!selectedRegionId) {
+      const regions = [...next.membrane_regions].sort((a,b) => a.user_label.localeCompare(b.user_label, undefined, {numeric:true}));
+      selectedRegionId = regions.find(r => r.included)?.region_id || regions[0]?.region_id || '';
+    }
+  }
+  // Changes run one at a time so each uses the revision left by the previous one.
+  function act(task, message) {
+    const run = queue.then(async () => {
+      busy = true;
+      try {
+        const result = await task();
+        await load();
+        if (message) notify(message);
+        return result ?? true;
+      } catch (e) {
+        if (e.status === 409) { await load().catch(fail); notify('外部で変更されています。最新を読み込みました', 'error'); }
+        else fail(e);
+        return false;
+      } finally { busy = false; }
+    });
+    queue = run.catch(() => {});
+    return run;
+  }
+  const mutate = (operation, payload, message) => act(() => request(operation, {...payload, expected_revision: project.project_revision}), message);
+
+  function selectPanel(id) {
+    const target = panels.find(p => p.panel_id === id);
+    if (busy || dragging || !target) return;
+    selectedRegionId = target.region_id;
+    selectedPanelId = id; preview = null;
+  }
+  function selectRegion(id) {
+    if (busy || dragging) return;
+    selectedRegionId = id; selectedPanelId = ''; preview = null;
+  }
+  const rename = (id, label) => mutate('rename_panel', {panel_id: id, label}, 'ラベルを変更しました');
+  const deleteRow = id => mutate('delete_panel', {panel_id:id}, 'Selectionを削除しました');
+  const addRow = id => mutate('duplicate_panel', {panel_id: id}, 'Selectionを複製しました');
+  async function addManualMembrane(rect, referenceFrameId) {
+    const before = new Set(project.membrane_regions.map(r => r.region_id));
+    const result = await mutate('add_manual_membrane', {rect, create_selection:false,
+      ...(referenceFrameId ? {reference_frame_id: referenceFrameId} : {}),
+    }, 'メンブレンを追加しました');
+    if (result && result !== true) {
+      const created = result.membrane_regions.find(r => !before.has(r.region_id));
+      if (created) { selectedRegionId = created.region_id; selectedPanelId = ''; preview = null; manualEmpty = false; }
+    }
+    return result;
+  }
+  async function addPanelSelection(panelId, rect) {
+    const before = new Set((project?.panels || []).map(p => p.panel_id));
+    const result = await mutate('add_panel_selection', {panel_id: panelId, region_id: activeRegion.region_id, crop_rect: rect}, 'セレクションを追加しました');
+    if (result && result !== true) {
+      const created = (result.panels || []).find(p => !before.has(p.panel_id));
+      if (created) { selectedPanelId = created.panel_id; preview = null; }
+    }
+    return result;
+  }
+  const setIncluded = (id, included) => mutate('set_panel_included', {panel_id: id, included}, included ? '段を表示しました' : '段を非表示にしました');
+  function setMembraneIncluded(regionId, included) {
+    // Switching a membrane off must not make it the one being edited.
+    if (included) selectRegion(regionId);
+    return mutate('set_membrane_included', {region_id: regionId, included});
+  }
+  const reorder = ids => mutate('reorder_panels', {panel_ids: ids});
+  // Master Control: one lane count for every row in the figure.
+  $: figurePanels = panels.filter(p => isIncluded(p) && project?.membrane_regions.some(r => r.region_id === p.region_id && r.included !== false));
+  $: figureCounts = [...new Set(figurePanels.map(p => project.sample_groups.find(g => g.sample_group_id === p.sample_group_id)?.lane_count
+    ?? p.display_geometry?.lane_layout?.lane_count ?? project.membrane_regions.find(r => r.region_id === p.region_id)?.lane_count ?? null))];
+  $: masterCount = figureCounts.length === 1 ? figureCounts[0] : null;
+  $: masterBase = Math.max(0, ...figureCounts.filter(Boolean));
+  const setAllLanes = count => setLanes(Math.max(1, count), null);
+  const setLanes = (count, panelId, names) => mutate('set_lanes', {lane_count: count, panel_id: panelId, ...(names ? {sample_names: names} : {})});
+  const setNames = (groupId, values) => mutate('set_sample_names', {sample_group_id: groupId, samples: values.map(name => ({name}))});
+  const saveLaneBoundaries = (id, boundaries) => mutate('set_lane_boundaries', {panel_id: id, boundaries}, 'レーン境界を保存しました');
+  const setMarker = (id, range) => mutate('set_marker_x', {panel_id: id, x0: range?.x0 ?? null, x1: range?.x1 ?? null},
+    range ? 'マーカーの範囲を保存しました' : 'マーカーを自動に戻しました');
+  const saveGeometry = (id, geometry) => mutate('save_panel_edit', {panel_id: id, display_geometry: geometry}, '編集を保存しました');
+  async function adopt(captureId) {
+    if (await mutate('set_selected_exposure', {panel_id: panel.panel_id, capture_id: captureId}, '採用露光を変更しました')) preview = null;
+  }
+  async function write(kind) {
+    const result = await act(() => request('export', {kind}));
+    if (!result?.path) return;
+    notify('保存しました', 'info', result.path);
+    // Hand each written file to the browser as a download; the copy in wblot_output stays.
+    for (const name of result.files || []) {
+      const link = document.createElement('a');
+      link.href = `api/download/${encodeURIComponent(name)}`;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+  }
+  const setEditing = (key, on) => { if (on) editing.add(key); else editing.delete(key); };
+
+  async function poll() {
+    if (polling || busy || dragging || editing.size || !project) return;
+    polling = true;
+    try {
+      const revision = await request('revision');
+      if (!busy && !dragging && !editing.size && revision.project_revision !== project.project_revision) {
+        await load();
+        notify('外部の変更を読み込みました');
+      }
+    } catch (e) { fail(e); }
+    finally { polling = false; }
+  }
+  onMount(() => {
+    load().catch(fail);
+    const timer = setInterval(poll, 2000);
+    return () => { clearInterval(timer); clearTimeout(toastTimer); };
+  });
+</script>
+
+<svelte:head><title>Western Blot Matome (WBM)</title></svelte:head>
+{#if project}
+  <div class="workbench">
+    <TopBar {project} {busy} onexport={write}/>
+    {#if membranes.length || manualEmpty || project.captures.some(c => c.modality === 'colorimetric')}
+      <div class="workspace">
+        <section aria-label="図">
+          <div class="stage-tabs" role="tablist" aria-label="手順">
+            <button role="tab" aria-selected={stage === 'membrane'} on:click={() => stage = 'membrane'}>1. メンブレン選択</button>
+            <button role="tab" aria-selected={stage === 'band'} on:click={() => stage = 'band'}>2. バンド選択</button>
+          </div>
+          {#if stage === 'membrane'}
+            <div class="membrane-list" data-testid="membrane-list">
+              {#each membranes as item (item.region.region_id)}
+                <div class="membrane-entry">
+                  <div class="membrane-heading">
+                    <button class="membrane-item" class:active={item.region.region_id === activeRegion?.region_id} class:excluded={item.region.included === false} disabled={busy}
+                      data-region={item.region.region_id} on:click={() => selectRegion(item.region.region_id)}>
+                      <span class="m-label">{item.region.user_label}</span>
+                    </button>
+                    <button class="membrane-switch" role="switch" aria-checked={item.region.included !== false}
+                      aria-label={`${item.region.user_label} を図に含める`} disabled={busy}
+                      on:click={() => setMembraneIncluded(item.region.region_id, item.region.included === false)}>
+                      <span class="switch-knob"></span>
+                    </button>
+                  </div>
+                </div>
+              {/each}
+              <button class="add-membrane" aria-label="メンブレンを追加" title="メンブレンを追加" disabled={busy} on:click={addMembrane}>＋</button>
+              <button class="primary next" disabled={busy || !activeRegion} on:click={() => stage = 'band'}>次へ</button>
+            </div>
+          {:else}
+            <div class="master-control" role="group" aria-label="Master Control">
+              <span class="master-title">Master Control</span>
+              <span class="master-item">全段のレーン数
+                {#if masterBase}
+                  <button class="icon" aria-label="全段のレーンを減らす" title="全段のレーンを減らす" disabled={busy || !figurePanels.length || masterBase <= 1}
+                    on:click={() => setAllLanes((masterCount ?? masterBase) - 1)}>−</button>
+                  <b data-testid="master-lanes">{masterCount ?? '混在'}</b>
+                  <button class="icon" aria-label="全段のレーンを増やす" title="全段のレーンを増やす" disabled={busy || !figurePanels.length}
+                    on:click={() => setAllLanes((masterCount ?? masterBase) + 1)}>+</button>
+                {:else}
+                  <button class="add-lane" aria-label="全段のレーンを設定" disabled={busy || !figurePanels.length} on:click={() => setAllLanes(1)}>レーン +</button>
+                {/if}
+              </span>
+            </div>
+            <FigurePane {project} {panels} selectedPanelId={panel?.panel_id} activeRegionId={activeRegion?.region_id} {preview} {busy} onselect={selectPanel} onrename={rename}
+              onadd={addRow} onsetincluded={setIncluded} ondelete={deleteRow} onreorder={reorder} onlanes={setLanes} onsetnames={setNames} onlaneedges={saveLaneBoundaries} onediting={setEditing}/>
+          {/if}
+        </section>
+        <section aria-label="元画像"><SourceCanvas {drawRequest} {project} panel={canvasPanel} {preview} bind:mode {busy} {stage} initialDraw={manualEmpty && !panels.length ? 'membrane' : null}
+          onselect={selectPanel} onselectregion={selectRegion} onsave={saveGeometry} onmarker={setMarker}
+          onaddmembrane={addManualMembrane} onaddselection={addPanelSelection} ondrag={value => dragging = value}/></section>
+      </div>
+    {:else}
+      <div class="workspace"><div class="empty">
+        <button disabled={busy} on:click={addMembrane}>＋</button>
+      </div></div>
+    {/if}
+    {#if stage === 'band' && panel}<ExposureStrip {project} {panel} {preview} {busy} onpreview={id => preview = id} onadopt={adopt}/>{/if}
+  </div>
+{:else}<div class="workbench"><div class="workspace"><div class="empty">読み込み中</div></div></div>{/if}
+{#if toast}<div class="toast" class:error={toast.kind === 'error'} role={toast.kind === 'error' ? 'alert' : 'status'}>{toast.text}{#if toast.path}<code>{toast.path}</code>{/if}</div>{/if}

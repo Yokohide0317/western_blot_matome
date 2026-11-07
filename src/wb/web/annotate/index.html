@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>ウェスタンブロット注釈</title>
+  <link rel="stylesheet" href="/static/annotate.css">
+</head>
+<body>
+  <header>
+    <h1>ウェスタンブロット注釈</h1>
+    <div id="issues"></div>
+    <div id="message" role="status"></div>
+  </header>
+
+  <main>
+    <aside>
+      <h2>メンブレンと段</h2>
+      <button id="propose">自動提案</button>
+      <div id="regions"></div>
+      <div id="proposal-summary"></div>
+      <button id="apply-proposal" hidden>提案を反映</button>
+      <label>追加する領域名<input id="new-label"></label>
+      <button id="add-region">Actin領域を追加</button>
+      <label>Excelファイルのパス<input id="metadata"></label>
+      <button id="import-metadata">メタデータ取込</button>
+    </aside>
+
+    <section>
+      <div class="controls">
+        <label>系列<select id="series"></select></label>
+        <label>基準露光<select id="reference"></select></label>
+        <label>位置合わせの根拠<input id="alignment-evidence"></label>
+        <button id="align">同一位置を確認</button>
+        <span id="badge" class="warning"></span>
+      </div>
+
+      <div class="controls">
+        <label>ツール
+          <select id="tool">
+            <option value="region">領域ポリゴン</option>
+            <option value="lanes">レーン中心</option>
+            <option value="crop">上下の切出し</option>
+            <option value="band">バンド点</option>
+            <option value="measurement_roi">バンドROI</option>
+            <option value="background_roi">背景ROI</option>
+            <option value="marker">マーカーの対応点</option>
+            <option value="marker_roi">マーカーROI</option>
+          </select>
+        </label>
+        <button id="finish-polygon">ポリゴンを閉じる</button>
+        <button id="undo">最後の点を取消</button>
+        <label>拡大<input id="zoom" type="number" min="0.1" step="0.1" value="1"></label>
+        <label>移動X<input id="pan-x" type="number" value="0"></label>
+        <label>移動Y<input id="pan-y" type="number" value="0"></label>
+      </div>
+
+      <label id="proposal-group-control" hidden>提案の組<select id="proposal-group"></select></label>
+      <label id="proposal-frame-control" hidden>提案の表示画像<select id="proposal-frame"><option value="marker">カラーメトリック写真</option><option value="reference">基準露光</option></select></label>
+      <div class="editor" id="editor-host"></div>
+      <p id="draft-status">未保存の編集なし</p>
+      <button id="save">編集を保存</button>
+      <button id="confirm">注釈を確認</button>
+      <button id="confirm-panel">段を確定</button>
+      <div id="alignment-check"></div>
+    </section>
+
+    <aside>
+      <div id="band-row-section" hidden>
+        <h2>バンドの段候補</h2>
+        <p>実線は採用中、破線はほかの候補です。</p>
+        <div id="band-row-candidates"></div>
+      </div>
+      <h2>設定</h2>
+      <label>領域状態
+        <select id="assignment">
+          <option value="proposed">提案</option>
+          <option value="candidate">設定中</option>
+          <option value="confirmed">確定</option>
+          <option value="unassigned">未割当</option>
+        </select>
+      </label>
+      <label>回転角度<input id="rotation" type="number" step="any" value="0"></label>
+      <label>レーン数<input id="lane-count" type="number" min="1"></label>
+      <label>クリックするレーン番号<input id="lane-number" type="number" min="1" value="1"></label>
+      <button id="fit-lanes">等間隔に当てはめる</button>
+      <div id="residuals"></div>
+      <label>切出し左<input id="crop-left" type="number" step="any"></label>
+      <label>切出し右<input id="crop-right" type="number" step="any"></label>
+      <label>切出し上<input id="crop-top" type="number" step="any"></label>
+      <label>切出し下<input id="crop-bottom" type="number" step="any"></label>
+      <label>出力幅<input id="width" type="number" min="1"></label>
+      <label>注釈のレーン番号<input id="annotation-lane" type="number" min="1"></label>
+      <label>バンド状態
+        <select id="band-status">
+          <option value="not_reviewed">未確認</option>
+          <option value="detected">検出</option>
+          <option value="not_detected">非検出</option>
+          <option value="ambiguous">不明瞭</option>
+        </select>
+      </label>
+
+      <h2>試料と対照</h2>
+      <label>試料グループ<select id="sample-group"></select></label>
+      <label>試料名（1行に1レーン、空欄可）<textarea id="samples" rows="5"></textarea></label>
+      <button id="save-samples">試料名を保存</button>
+      <label>対照対象パネル（複数選択）<select id="control-for" multiple></select></label>
+      <button id="save-control">対照関係を保存</button>
+
+      <h2>マーカー登録</h2>
+      <label>マーカー画像<select id="marker-frame"></select></label>
+      <label>対応点を追加する画像
+        <select id="landmark-side">
+          <option value="reference">基準画像</option>
+          <option value="marker">マーカー画像</option>
+        </select>
+      </label>
+      <button id="fit-marker">対応点から変換を計算</button>
+      <button id="marker-identity">同一位置を確認</button>
+      <label>根拠<input id="marker-evidence"></label>
+      <button id="save-marker">マーカー登録を保存</button>
+      <div id="marker-result"></div>
+
+      <h2>プレビュー</h2>
+      <img id="preview" alt="基準露光のパネル">
+      <div id="exposures"></div>
+    </aside>
+  </main>
+
+  <script src="/common/labels.js"></script>
+  <script src="/common/frameview.js"></script>
+  <script src="/static/annotate.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "wbm-browser",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {"dev": "vite", "build": "vite build", "test": "node --test src/lib/*.test.js"},
+  "dependencies": {"svelte": "5.57.3"},
+  "devDependencies": {"vite": "8.3.5", "@sveltejs/vite-plugin-svelte": "7.3.1"}
+}

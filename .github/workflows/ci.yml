@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: No research data in the repository (dev/AGENT_POLICY.md)
+        run: python dev/check_public.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the web UI
+        working-directory: src/wb/web/app
+        run: |
+          npm ci
+          npm test
+          npm run build
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - name: Tests (macOS, including the browser UI)
+        if: runner.os == 'macOS'
+        run: |
+          uv run playwright install chromium
+          uv run pytest -q
+      - name: Tests (Windows, server and export)
+        if: runner.os == 'Windows'
+        run: uv run pytest -q tests/test_hub.py tests/test_cli.py tests/test_download.py tests/test_layout.py tests/test_export.py tests/test_marker_x.py tests/test_ladder.py
+      - name: Install the built wheel like a user would
+        shell: bash
+        run: |
+          uv build --wheel -o wheel
+          uv tool install --python 3.12 wheel/*.whl
+          wbm --version

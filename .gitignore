@@ -1,0 +1,20 @@
+*.zip
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+work/
+node_modules/
+.DS_Store
+
+# Research data never goes into this public repository (dev/AGENT_POLICY.md)
+instructions/
+private/
+dev/private_terms.txt
+wblot_output/
+*.wblot
+*.tif
+*.tiff
+*.scn
+
+.DS_Store

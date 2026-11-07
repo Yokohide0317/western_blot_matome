@@ -1,0 +1,291 @@
+"""Commands shared with the browser API."""
+
+import argparse
+import json
+import sys
+import zipfile
+
+from wb import api, project as P
+
+
+def parser():
+    root = argparse.ArgumentParser(prog="wbm", description="Western Blot Matome: ウェスタンブロットの段を確認し、図を書き出します。")
+    from wb import __version__
+
+    root.add_argument("--version", action="version", version=f"wbm {__version__}")
+    root.add_argument("--project", default=argparse.SUPPRESS, help="ZIP、画像フォルダ、.wblot")
+    root.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="JSONで出力")
+    sub = root.add_subparsers(dest="command", required=True)
+    descriptions = {
+        "init": ".wblotを作成",
+        "open": "ブラウザを開く",
+        "stop": "サーバーを停止（開いている全プロジェクト）",
+        "recent": "最近開いたプロジェクトを表示",
+        "status": "Selectionと採用画像を表示",
+        "propose": "自動提案",
+        "set-exposure": "採用露光を変更",
+        "adjust": "角度と範囲を調整",
+        "rename": "段のラベルを変更",
+        "reorder": "段を並べ替え",
+        "include": "段を含める",
+        "exclude": "段を除外",
+        "duplicate": "段を複製",
+        "add-membrane": "メンブレンと段を手動追加",
+        "lanes": "レーン数を設定",
+        "marker": "マーカーを左右にトリミング・移動（縦はバンドの範囲と共通）",
+        "export": "PPTXかPNGを書き出す",
+        "validate": "元画像と編集内容を検証",
+        "install-skill": "Skillを導入",
+        "config": "設定ファイル（ChemiDocのファイル名の読み方など）を表示・作成・確認",
+    }
+    for name, description in descriptions.items():
+        command = sub.add_parser(name, help=description, description=description)
+        command.add_argument("--project", default=argparse.SUPPRESS, help="ZIP、画像フォルダ、.wblot")
+        command.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="JSONで出力")
+        if name in ("init", "open"):
+            command.add_argument("path", nargs="?" if name == "open" else None)
+        if name == 'init':
+            command.add_argument('--refresh', action='store_true', help='既存状態をバックアップし、元画像を取り込み直して編集を初期化')
+        if name == "open":
+            command.add_argument("--no-browser", action="store_true")
+        if name == "propose":
+            command.add_argument("--apply", action="store_true")
+            command.add_argument("--summary", action="store_true", help="提案の段と警告件数だけを表示")
+        if name in ("set-exposure", "adjust", "rename", "marker"):
+            command.add_argument("panel")
+        if name in ("include", "exclude", "duplicate"):
+            command.add_argument("panel")
+        if name == "add-membrane":
+            command.add_argument("x0", type=float)
+            command.add_argument("y0", type=float)
+            command.add_argument("x1", type=float)
+            command.add_argument("y1", type=float)
+            command.add_argument("--rotation", type=float, default=0.0)
+            command.add_argument("--membrane-label")
+            command.add_argument("--label")
+        if name == "reorder":
+            command.add_argument("panels", nargs="+")
+        if name == "lanes":
+            command.add_argument("count", type=int)
+            command.add_argument("--panel")
+            command.add_argument("--samples")
+        if name == "set-exposure":
+            command.add_argument("capture_id")
+        if name == "rename":
+            command.add_argument("label")
+        if name == "adjust":
+            command.add_argument("--rotation", type=float)
+            command.add_argument("--crop-left", type=float)
+            command.add_argument("--crop-right", type=float)
+            command.add_argument("--crop-top", type=float)
+            command.add_argument("--crop-bottom", type=float)
+            command.add_argument("--width", type=int)
+        if name == "marker":
+            command.add_argument("--left", type=float, help="左端（傾き補正後の座標）")
+            command.add_argument("--right", type=float, help="右端")
+            command.add_argument("--shift", type=float, help="左右に移動する量（右が正）")
+            command.add_argument("--reset", action="store_true", help="自動のマーカー範囲に戻す")
+        if name == "export":
+            command.add_argument("kind", choices=("pptx", "png"))
+        if name == "config":
+            command.add_argument("--init", action="store_true", help="説明つきの設定ファイルを作る（既にあれば変更しない）")
+            command.add_argument("--check", metavar="ZIPまたはフォルダ", help="今の設定でファイル名がどう読まれるかを表示")
+        if name == "install-skill":
+            command.add_argument("--claude", action="store_true")
+            command.add_argument("--codex", action="store_true")
+            command.add_argument("--agents", action="store_true", help="~/.agents/skills に入れる")
+    return root
+
+
+def _execute(args):
+    name = args.command
+    if name == "install-skill":
+        return api.install_skill(args.claude, args.codex, args.agents)
+    if name == "config":
+        from wb import config
+
+        if args.init:
+            return config.init()
+        if args.check:
+            return config.check(args.check)
+        return config.show()
+    target = getattr(args, "project", None)
+    if name == "init":
+        return api.init_project(args.path or target, args.refresh)
+    if name == "stop":
+        return api.stop_project()
+    if name == "recent":
+        return api.recent_projects()
+    if name == "open":
+        return api.open_project(args.path or target, args.no_browser)
+    path = P.locate(target)
+    if name == "status":
+        return api.status(path)
+    if name == "validate":
+        return api.validate(path)
+    if name == "propose":
+        project = api._load(path)
+        proposal = api.propose(path)
+        if args.apply:
+            saved = api.apply_proposal(path, proposal, project.project_revision)
+            return {
+                "ok": True,
+                "project_revision": saved.project_revision,
+                "panels": api.panel_summaries(saved),
+                "excluded_image_sets": proposal.get("excluded_image_sets", []),
+                "warnings_count": _warnings_count(proposal),
+            }
+        if args.summary:
+            return {
+                "panels": [
+                    {"label": m["panel_label"], "membrane_label": m["label"],
+                     "selected_band_row_candidate_id": m["row"]["candidate_id"],
+                     "selected_exposure_id": m["row"]["selected_exposure_id"]}
+                    for group in proposal["groups"] for m in group["membranes"]
+                ],
+                "excluded_image_sets": proposal.get("excluded_image_sets", []),
+                "warnings_count": _warnings_count(proposal),
+            }
+        return proposal
+    if name == "export":
+        return api.export_project(path, args.kind)
+    project = api._load(path)
+    revision = project.project_revision
+    if name == "reorder":
+        values = [v.strip() for arg in args.panels for v in arg.split(",") if v.strip()]
+        ids = [api.resolve_panel(project, value).panel_id for value in values]
+        saved = api.reorder_panels(path, ids, revision)
+        return {"ok": True, "project_revision": saved.project_revision, "panels": api.panel_summaries(saved)}
+    if name == "add-membrane":
+        saved = api.add_manual_membrane(
+            path,
+            revision,
+            rect={"x0": args.x0, "y0": args.y0, "x1": args.x1, "y1": args.y1},
+            rotation_deg=args.rotation,
+            user_label=args.membrane_label,
+            label=args.label,
+        )
+        panel = saved.panels[-1]
+        entry = next(p for p in api.panel_summaries(saved) if p["panel_id"] == panel.panel_id)
+        return {"ok": True, "project_revision": saved.project_revision, "panel": entry, "new_panel_id": panel.panel_id}
+    if name == "lanes":
+        pid = api.resolve_panel(project, args.panel).panel_id if args.panel else None
+        samples = args.samples.split(",") if args.samples is not None else None
+        saved = api.set_lanes(path, args.count, revision, panel_id=pid, sample_names=samples)
+        return {"ok": True, "project_revision": saved.project_revision, "panels": api.panel_summaries(saved)}
+    panel = api.resolve_panel(project, args.panel)
+    if name in ("include", "exclude"):
+        saved = api.set_panel_included(path, panel.panel_id, name == "include", revision)
+    elif name == "duplicate":
+        saved = api.duplicate_panel(path, panel.panel_id, revision)
+        old_ids = {p.panel_id for p in project.panels}
+        panel = next(p for p in saved.panels if p.panel_id not in old_ids)
+    elif name == "set-exposure":
+        saved = api.set_selected_exposure(path, panel.panel_id, args.capture_id, revision)
+    elif name == "rename":
+        saved = api.rename_panel(path, panel.panel_id, args.label, revision)
+    elif name == "marker":
+        x0, x1 = (None, None) if args.reset else _marker_x(project, panel, args)
+        saved = api.set_marker_x(path, panel.panel_id, x0, x1, revision)
+    elif name == "adjust":
+        saved = api.adjust(
+            path,
+            panel.panel_id,
+            revision,
+            args.rotation,
+            args.crop_top,
+            args.crop_bottom,
+            args.width,
+            args.crop_left,
+            args.crop_right,
+        )
+    else:
+        raise ValueError(f"不明なコマンド: {name}")
+    entry = next(p for p in api.panel_summaries(saved) if p["panel_id"] == panel.panel_id)
+    receipt = {"ok": True, "project_revision": saved.project_revision, "panel": entry}
+    if name == "duplicate":
+        receipt["new_panel_id"] = panel.panel_id
+    return receipt
+
+
+def _marker_x(project, panel, args):
+    from wb.rendering import marker_rect
+
+    if all(v is None for v in (args.left, args.right, args.shift)):
+        raise ValueError("--left/--right/--shift か --reset を指定してください。縦の範囲は adjust の --crop-top/--crop-bottom で変えます")
+    current = marker_rect(project, panel)
+    if current is None:
+        raise ValueError("この段にはColorimetricマーカーの位置合わせがありません")
+    x0 = current.x0 if args.left is None else args.left
+    x1 = current.x1 if args.right is None else args.right
+    shift = args.shift or 0.0
+    return x0 + shift, x1 + shift
+
+
+def _warnings_count(proposal):
+    return len(proposal.get("warnings", [])) + sum(len(g.get("warnings", [])) for g in proposal["groups"])
+
+
+def _mutation_message(result):
+    revision = result["project_revision"]
+    if "panel" in result:
+        panel = result["panel"]
+        return f"段 {panel['label']} を更新しました（版 {revision}）。"
+    if "warnings_count" in result:
+        return f"提案を反映しました。段 {len(result['panels'])} 件、警告 {result['warnings_count']} 件（版 {revision}）。"
+    return f"段 {len(result['panels'])} 件を更新しました（版 {revision}）。"
+
+
+def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):  # Windows consoles and pipes default to a legacy code page.
+            stream.reconfigure(encoding="utf-8")
+    args = parser().parse_args(argv)
+    json_output = getattr(args, "json", False)
+    try:
+        result = _execute(args)
+        if hasattr(result, "model_dump"):
+            result = result.model_dump(mode="json")
+        if json_output:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        elif isinstance(result, dict) and result.get("ok"):
+            print(_mutation_message(result))
+        elif args.command == "propose":
+            count = len(result["panels"]) if "panels" in result else sum(len(g["membranes"]) for g in result["groups"])
+            warnings = result["warnings_count"] if "warnings_count" in result else _warnings_count(result)
+            print(f"段 {count} 件を提案しました。警告 {warnings} 件。")
+        elif args.command == "open":
+            print(result["url"])
+        elif args.command == "recent":
+            for entry in result["projects"]:
+                print(f"{entry['last_opened_local']}  {entry['path']}{'' if entry['exists'] else '  (見つかりません)'}")
+        elif args.command == "config" and "files" in result:
+            for f in result["files"]:
+                role = {"chemiluminescence": "発光", "colorimetric": "マーカー"}.get(f["modality"], "読めない")
+                exposure = f"{f['exposure_s']:g}s" if f["exposure_s"] is not None else "-"
+                print(f"{role:<5} {exposure:>8}  {f['kind']:<5}  {f['file']}")
+            print(f"画像 {result['images']} 件: 発光 {result['signal']} / マーカー {result['marker']} / 読めない {len(result['unrecognised'])}（設定: {result['config']}）")
+        elif args.command == "config" and "naming" in result:
+            print(f"設定ファイル: {result['path']}{'' if result['exists'] else '（未作成。既定値を使用中。wbm config --init で作成）'}")
+            for key, value in result["naming"].items():
+                print(f"  {key} = {value!r}")
+        elif args.command == "config":
+            print(f"{'作成しました' if result['created'] else '既にあります'}: {result['path']}")
+        elif args.command == "install-skill":
+            print("\n".join(result["paths"]))
+        elif isinstance(result, dict) and "path" in result:
+            print(result["path"])
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 1 if args.command == "validate" and result["source_issues"] else 0
+    except (ValueError, OSError, KeyError, StopIteration, zipfile.BadZipFile) as exc:
+        message = f"処理できませんでした: {exc}"
+        if json_output:
+            print(json.dumps({"error": message}, ensure_ascii=False))
+        else:
+            print(message, file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,8 +1,9 @@
 """User settings, read from ``config.toml`` in ``project.app_home()`` (or ``$WBM_CONFIG``).
 
-Only file naming is configurable for now, because ChemiDoc export names differ
-between labs. Settings apply when images are imported (``wbm init`` / opening a
-new ZIP or folder); a project already imported keeps what it read.
+``[naming]``: how ChemiDoc export names are read, because they differ between
+labs. It applies when images are imported (``wbm init`` / opening a new ZIP or
+folder); a project already imported keeps what it read.
+``[update]``: whether to look for a new release on GitHub once a day.
 """
 
 from __future__ import annotations
@@ -40,6 +41,10 @@ marker_modes = ["Colorimetric"]
 
 # 16-bit 原画像の目印（拡張子の直前）。「… (Chemiluminescence).raw16.tif」なら ".raw16"
 raw16_suffix = ".raw16"
+
+[update]
+# 1日1回、GitHub で新しいバージョンを確認する（false で確認しない）
+check = true
 '''
 
 
@@ -105,11 +110,13 @@ def _settings() -> dict:
     unknown = set(user) - set(defaults)
     if unknown:
         raise ValueError(f"設定ファイルに不明な項目があります: {', '.join(sorted(unknown))}（{path}）")
-    merged = {section: {**values, **user.get(section, {})} for section, values in defaults.items()}
-    extra = set(user.get("naming", {})) - set(defaults["naming"])
-    if extra:
-        raise ValueError(f"[naming] に不明な項目があります: {', '.join(sorted(extra))}（{path}）")
-    return merged
+    for section, values in defaults.items():
+        if not isinstance(user.get(section, {}), dict):
+            raise ValueError(f"{section} は [{section}] の表として書いてください（{path}）")
+        extra = set(user.get(section, {})) - set(values)
+        if extra:
+            raise ValueError(f"[{section}] に不明な項目があります: {', '.join(sorted(extra))}（{path}）")
+    return {section: {**values, **user.get(section, {})} for section, values in defaults.items()}
 
 
 def naming() -> Naming:
@@ -131,9 +138,18 @@ def naming() -> Naming:
     return Naming(pattern, scale, signal, marker, str(values["raw16_suffix"]))
 
 
+def update_check() -> bool:
+    """``[update] check``: look for a new release on GitHub (at most once a day)."""
+    value = _settings()["update"]["check"]
+    if not isinstance(value, bool):
+        raise ValueError("[update] check は true か false にしてください")
+    return value
+
+
 def show() -> dict:
     path = config_path()
-    return {"path": str(path), "exists": path.is_file(), "naming": _settings()["naming"]}
+    settings = _settings()
+    return {"path": str(path), "exists": path.is_file(), "naming": settings["naming"], "update": settings["update"]}
 
 
 def init() -> dict:

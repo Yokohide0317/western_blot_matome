@@ -1,5 +1,6 @@
 <script>
   import { isIncluded } from '../lib/api.js';
+  import UpdateNotice from './UpdateNotice.svelte';
   export let project;
   export let busy = false;
   export let onexport;
@@ -15,6 +16,7 @@
     <button disabled={busy || empty} on:click={() => onexport('pptx')}>PPTX</button>
     <button disabled={busy || empty} on:click={() => onexport('png')}>PNG</button>
   </div>
+  <UpdateNotice/>
 </header>
 
 <style>

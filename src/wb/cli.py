@@ -37,6 +37,8 @@ def parser():
         "validate": "元画像と編集内容を検証",
         "install-skill": "Skillを導入",
         "config": "設定ファイル（ChemiDocのファイル名の読み方など）を表示・作成・確認",
+        "update": "新しいバージョンに更新（--check で確認だけ）",
+        "start": "サーバーを起動してURLを表示",
     }
     for name, description in descriptions.items():
         command = sub.add_parser(name, help=description, description=description)
@@ -90,6 +92,8 @@ def parser():
         if name == "config":
             command.add_argument("--init", action="store_true", help="説明つきの設定ファイルを作る（既にあれば変更しない）")
             command.add_argument("--check", metavar="ZIPまたはフォルダ", help="今の設定でファイル名がどう読まれるかを表示")
+        if name == "update":
+            command.add_argument("--check", action="store_true", help="GitHubで最新版を確認して表示するだけ")
         if name == "install-skill":
             command.add_argument("--claude", action="store_true")
             command.add_argument("--codex", action="store_true")
@@ -101,6 +105,14 @@ def _execute(args):
     name = args.command
     if name == "install-skill":
         return api.install_skill(args.claude, args.codex, args.agents)
+    if name == "update":
+        from wb import update
+
+        return update.status(force=True) if args.check else update.update_now()
+    if name == "start":
+        from wb import server
+
+        return server.ensure_server()
     if name == "config":
         from wb import config
 
@@ -267,12 +279,20 @@ def main(argv=None):
             print(f"画像 {result['images']} 件: 発光 {result['signal']} / マーカー {result['marker']} / 読めない {len(result['unrecognised'])}（設定: {result['config']}）")
         elif args.command == "config" and "naming" in result:
             print(f"設定ファイル: {result['path']}{'' if result['exists'] else '（未作成。既定値を使用中。wbm config --init で作成）'}")
-            for key, value in result["naming"].items():
-                print(f"  {key} = {value!r}")
+            for section in ("naming", "update"):
+                print(f"[{section}]")
+                for key, value in result[section].items():
+                    print(f"  {key} = {value!r}")
         elif args.command == "config":
             print(f"{'作成しました' if result['created'] else '既にあります'}: {result['path']}")
         elif args.command == "install-skill":
             print("\n".join(result["paths"]))
+        elif args.command == "update":
+            print(result["message"])
+            if result.get("available") and not result.get("can_apply"):
+                print(f"更新するには次の1行を実行してください: {result['command']}")
+        elif args.command == "start":
+            print(result["url"])
         elif isinstance(result, dict) and "path" in result:
             print(result["path"])
         else:

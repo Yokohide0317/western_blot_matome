@@ -17,7 +17,7 @@ import sys
 import tempfile
 import time
 
-from wb import project as P
+from wb import __version__, project as P
 from wb.locks import file_lock
 
 HUB_NAME = "wbm-hub"
@@ -233,8 +233,14 @@ class Hub:
             return await _send_text(send, 403, "forbidden")
         path = scope["path"]
         if path == "/api/hub":
-            body = json.dumps({"app": HUB_NAME, "pid": os.getpid(), "token": os.environ.get("WBM_HUB_TOKEN")})
+            body = json.dumps({"app": HUB_NAME, "pid": os.getpid(), "token": os.environ.get("WBM_HUB_TOKEN"),
+                               "version": __version__})
             return await _send_text(send, 200, body, "application/json")
+        if path == "/api/hub/update" and scope["method"] == "GET":
+            from wb import update
+
+            body = json.dumps(await asyncio.to_thread(update.status), ensure_ascii=False)
+            return await _send_text(send, 200, body, "application/json; charset=utf-8")
         if path == "/api/hub/projects":
             return await _send_text(send, 200, json.dumps(recent(), ensure_ascii=False), "application/json; charset=utf-8")
         if path == "/icon.png":
@@ -277,11 +283,23 @@ class Hub:
                 if self.on_shutdown:
                     self.on_shutdown()
                 return await reply(200, {"stopping": bool(self.on_shutdown)})
+            if action == "update":
+                return await self._update(reply)
             if action == "forget":
                 return await reply(200, {"removed": forget(str(body.get("id", "")))})
             return await reply(404, {"detail": "操作が見つかりません"})
         except (ValueError, OSError, P.ProjectError) as exc:
             return await reply(422, {"detail": str(exc)})
+
+    async def _update(self, reply):
+        """Start the updater (it waits for this process), answer, then stop; the updater restarts the hub."""
+        from wb import update
+
+        if not self.on_shutdown:
+            raise ValueError("このサーバーは自動で再起動できません。wbm update を使ってください")
+        result = await asyncio.to_thread(update.apply, wait_pids=[os.getpid()], restart_hub=True)
+        await reply(200, result)
+        self.on_shutdown()
 
     async def _upload(self, scope, receive):
         from urllib.parse import parse_qs

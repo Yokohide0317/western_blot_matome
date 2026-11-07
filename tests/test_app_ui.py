@@ -139,6 +139,18 @@ def centre(locator):
     return [box['x'] + box['width'] / 2, box['y'] + box['height'] / 2]
 
 
+def wait_for_revision(page, path, revision):
+    """The saved project once it reaches ``revision`` (and the screen is no longer busy)."""
+    for _ in range(200):
+        current = api._load(path)
+        if current.project_revision >= revision and not page.locator('.workbench[aria-busy="true"]').count():
+            break
+        page.wait_for_timeout(50)
+    assert current.project_revision == revision
+    page.wait_for_timeout(100)
+    return current
+
+
 def drag(page, start, end, steps=8):
     page.mouse.move(*start)
     page.mouse.down()
@@ -267,8 +279,11 @@ def test_dragging_crop_handles_and_rotation_saves_float_geometry(app_project):
         assert after.panels[0].display_geometry.geometry_revision == old.display_geometry.geometry_revision + 1
         bottom = page.locator('circle[data-handle="bottom"]')
         start = centre(bottom)
+        revision = after.project_revision
         drag(page, start, [start[0], start[1] + 12])
-        expect(page.get_by_text('編集を保存しました', exact=True)).to_be_visible()
+        # The first toast may still be showing, and handles stay on screen (ignoring input) while
+        # a save runs, so wait for this save before the next drag.
+        wait_for_revision(page, path, revision + 1)
         final = api._load(path).panels[0].display_geometry.crop_rect
         assert 0 < final.y1 - crop.y1 < 2 and final.y0 == crop.y0
         angle_before = rotation_degrees(api._load(path), api._load(path).panels[0])
@@ -278,12 +293,7 @@ def test_dragging_crop_handles_and_rotation_saves_float_geometry(app_project):
         drag(page, start, [start[0], start[1] + 40])
         expect(page.locator('.pill b')).not_to_have_text(f'{round(angle_before, 1):g}°')
         # The label changes while dragging; wait for the save itself before reading the file.
-        for _ in range(100):
-            current = api._load(path)
-            if current.project_revision > revision:
-                break
-            page.wait_for_timeout(50)
-        assert current.project_revision == revision + 1
+        current = wait_for_revision(page, path, revision + 1)
         angle_after = rotation_degrees(current, current.panels[0])
         assert abs(angle_after - angle_before) > .3
         transform = next(t for t in current.transforms if t.transform_id == current.panels[0].display_geometry.reference_to_rectified_transform_id)

@@ -151,7 +151,7 @@
 
 <svelte:head><title>Western Blot Matome (WBM)</title></svelte:head>
 {#if project}
-  <div class="workbench">
+  <div class="workbench" aria-busy={busy}>
     <TopBar {project} {busy} onexport={write}/>
     {#if membranes.length || manualEmpty || project.captures.some(c => c.modality === 'colorimetric')}
       <div class="workspace">

@@ -176,7 +176,9 @@ def check(target) -> dict:
         except zipfile.BadZipFile as exc:
             raise ValueError(f"ZIPとして読めません: {source.name}") from exc
     elif source.is_dir():
-        names = [str(p.relative_to(source)) for p in source.rglob("*") if p.is_file()]
+        from wb.ingest import folder_files
+
+        names = [p.relative_to(source).as_posix() for p in folder_files(source) if p.is_file()]
     else:
         raise ValueError(f"ZIPか画像フォルダを指定してください: {source}")
     names = [n for n in names if "__MACOSX" not in n and not Path(n).name.startswith("._")

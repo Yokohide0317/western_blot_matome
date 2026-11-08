@@ -310,6 +310,20 @@ def _archive_prefix(names):
     return ""
 
 
+# ChemiDoc can put each capture in its own folder named after it ("… 13h24m31s 60.000s").
+_CAPTURE_FOLDER = re.compile(r"^\d{4}-\d{2}-\d{2} \d{1,2}h\d{2}m\d{2}s\b")
+
+
+def _session_folder(member: str, parsed) -> str:
+    """The folder that groups a capture's exposures; a per-capture folder counts as its parent."""
+    folder = PurePosixPath(member).parent
+    stem = parsed["scn_name"].removesuffix(".scn") if parsed and parsed["scn_name"] else None
+    name = folder.name.strip()
+    if name and (_CAPTURE_FOLDER.match(name) or (stem and name.casefold() == stem.strip().casefold())):
+        folder = folder.parent
+    return str(folder)
+
+
 def _link_entries(name, digest, entries, ignored, rules):
     """Pair display TIFFs with their raw16 and .scn partners using the configured naming rules."""
     parsed = lambda member: rules.parse(PurePosixPath(member).name)
@@ -319,7 +333,7 @@ def _link_entries(name, digest, entries, ignored, rules):
     )
     folder_names = sorted(
         {
-            str(PurePosixPath(s.archive_member).parent)
+            _session_folder(s.archive_member, m)
             for s in entries.values()
             if (m := parsed(s.archive_member)) and m["modality"] == "chemiluminescence"
         }
@@ -335,7 +349,7 @@ def _link_entries(name, digest, entries, ignored, rules):
             s.exposure_seconds = m["exposure_s"]
             s.modality = m["modality"]
             if s.modality == "chemiluminescence":
-                s.group_id = groups[str(p.parent)]
+                s.group_id = groups[_session_folder(s.archive_member, m)]
             else:
                 s.group_id = "MARKER"
             scn_path = str(p.with_name(m["scn_name"])) if m["scn_name"] else None
@@ -373,7 +387,7 @@ def _link_entries(name, digest, entries, ignored, rules):
         if m and s.metadata["dtype"] == "uint16" and s.metadata["channels"] == "grayscale" and s.metadata["photometric"] in (0, 1):
             s.exposure_seconds = m["exposure_s"]
             s.modality = m["modality"]
-            s.group_id = groups[str(p.parent)] if s.modality == "chemiluminescence" else "MARKER"
+            s.group_id = groups[_session_folder(s.archive_member, m)] if s.modality == "chemiluminescence" else "MARKER"
             s.analysis_source_id = s.source_id
             # One fixed linear mapping for every exposure; no percentile clipping.
             s.metadata["display_mapping"] = {
@@ -517,12 +531,18 @@ def extract_sources(zip_path, project_dir, ledger):
                 Path(temporary).unlink(missing_ok=True)
 
 
+def folder_files(root):
+    """Files in an image folder and its direct subfolders (one level, like ChemiDoc's per-capture folders)."""
+    root = Path(root)
+    return sorted([*root.glob("*"), *root.glob("*/*")])
+
+
 def scan_folder(folder):
     """Read the same ledger in place; never copy or modify a source."""
     root = Path(folder)
     rules = config.naming()
     entries, ignored = {}, []
-    for path in sorted(root.rglob("*")):
+    for path in folder_files(root):
         relative = path.relative_to(root)
         if "wblot_output" in relative.parts or "__MACOSX" in relative.parts:
             continue

@@ -11,7 +11,7 @@ from pathlib import Path
 from wb import project as P
 from wb.readiness import output_readiness, REASON_TEXT
 from wb.geometry import Affine, Rect, require_within_frame
-from wb.ingest import scan_archive, scan_folder, materialize_archive, read_metadata_xlsx
+from wb.ingest import folder_files, scan_archive, scan_folder, materialize_archive, read_metadata_xlsx
 from wb.model import DisplayGeometry, FramePolygon, Transform
 
 
@@ -32,7 +32,7 @@ def _get(items, key, value):
 
 def unimported_sources(project, root):
     known = {s.relative_path for s in project.sources}
-    return sorted(p.relative_to(root).as_posix() for p in Path(root).rglob('*')
+    return sorted(p.relative_to(root).as_posix() for p in folder_files(root)
                   if p.is_file() and p.suffix.lower() in ('.tif', '.tiff', '.scn')
                   and not any(part in ('wblot_output', '__MACOSX') or part.startswith('._')
                               for part in p.relative_to(root).parts)

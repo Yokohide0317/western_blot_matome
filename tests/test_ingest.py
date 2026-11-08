@@ -255,3 +255,41 @@ def test_archive_symlinks_rejected_before_extraction(tmp_path, name):
     with pytest.raises(ValueError, match="シンボリックリンク"):
         materialize_archive(archive)
     assert not (tmp_path / "folder").exists()
+
+
+def _tiff(path):
+    import io
+    import numpy as np
+    import tifffile
+
+    data = io.BytesIO()
+    tifffile.imwrite(data, np.zeros((4, 5, 3), dtype=np.uint8), photometric="rgb")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data.getvalue())
+
+
+def test_folder_reads_per_capture_subfolders_as_one_series(tmp_path):
+    """ChemiDoc may export each capture into its own folder; its exposures still belong together."""
+    from wb.ingest import scan_folder
+
+    root = tmp_path / "ChemiDoc_export"
+    for stem, mode in [("2000-01-01 12h00m00s 10.000s", "Chemiluminescence"),
+                       ("2000-01-01 12h01m00s 60.000s", "Chemiluminescence"),
+                       ("2000-01-01 12h02m00s 0.200s", "Colorimetric")]:
+        _tiff(root / stem / f"{stem}({mode}).tif")
+    _tiff(root / "2000-01-01 12h03m00s 5.000s(Chemiluminescence).tif")
+    _tiff(root / "a" / "b" / "too deep 1.000s(Chemiluminescence).tif")
+    records = scan_folder(root).to_project_records()
+    assert [(s["image_set_id"], len(s["capture_ids"])) for s in records["image_sets"]] == [("S01", 3)]
+    assert not any("too deep" in s["relative_path"] for s in records["sources"])
+
+
+def test_named_session_folders_stay_separate(tmp_path):
+    from wb.ingest import scan_folder
+
+    root = tmp_path / "ChemiDoc_export"
+    for folder in ("series0", "series1"):
+        for exposure in ("10.000", "60.000"):
+            _tiff(root / folder / f"2000-01-01 12h00m00s {exposure}s(Chemiluminescence).tif")
+    records = scan_folder(root).to_project_records()
+    assert [(s["image_set_id"], len(s["capture_ids"])) for s in records["image_sets"]] == [("S01", 2), ("S02", 2)]

@@ -52,6 +52,9 @@ Xcode Command Line Tools・Python・git・Node.js は不要です（[uv](https:/
 
 ## AIエージェントへ
 
+<details>
+<summary>AIエージェント向けの導入手順（利用者は読まなくて大丈夫です）</summary>
+
 > このセクションは、利用者に「READMEを読んで、ツールとSkillを導入して」と頼まれたAIエージェント（Claude Code、Codex など）への指示です。
 
 利用者はコマンドに慣れていない研究者の場合があります。説明は短く日本語で、専門用語を避けてください。
@@ -77,6 +80,8 @@ Xcode Command Line Tools・Python・git・Node.js は不要です（[uv](https:/
    - データのフォルダをセッションに追加しておくと、読み書きの許可を何度も聞かれずに済む。
 
 利用者のデータを、導入の確認のために開いたり送ったりしないでください。
+
+</details>
 
 ## 使い方（Claude / Codex への頼み方）
 

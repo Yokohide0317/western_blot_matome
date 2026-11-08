@@ -3,6 +3,8 @@
 Checks tracked and staged files for image/data formats and large files, and,
 with ``dev/private_terms.txt`` (one term per line, never committed), for those
 terms in file contents and in the messages of commits about to be pushed.
+A line ``term @ path/one, path/two`` allows that term in those files only; it is
+still refused everywhere else and in commit messages.
 
     uv run python dev/check_public.py
     uv run python dev/check_public.py --since origin/main
@@ -37,10 +39,18 @@ def files() -> list[str]:
     return sorted(p for p in tracked | staged if p and (ROOT / p).is_file())
 
 
-def private_terms() -> list[str]:
+def private_terms() -> list[tuple[str, set[str]]]:
+    """``(term, files where it is allowed)`` from ``dev/private_terms.txt``."""
     if not TERMS.is_file():
         return []
-    return [t.strip() for t in TERMS.read_text(encoding="utf-8").splitlines() if t.strip() and not t.startswith("#")]
+    terms = []
+    for line in TERMS.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        term, _, allowed = line.partition(" @ ")
+        terms.append((term.strip(), {p.strip() for p in allowed.split(",") if p.strip()}))
+    return terms
 
 
 def _pattern(term: str) -> re.Pattern:
@@ -56,7 +66,7 @@ def main(argv=None) -> int:
     parser.add_argument("--since", help="also check messages of commits after this ref (e.g. origin/main)")
     args = parser.parse_args(argv)
     problems = []
-    terms = [(t, _pattern(t)) for t in private_terms()]
+    terms = [(t, _pattern(t), allowed) for t, allowed in private_terms()]
     for name in files():
         path = ROOT / name
         if name.split("/")[0] in PRIVATE_DIRS:
@@ -67,10 +77,11 @@ def main(argv=None) -> int:
             problems.append(f"大きすぎるファイル（{path.stat().st_size // 1024} KB）: {name}")
         if terms and name not in TEXT_SKIP and name != "dev/private_terms.txt":
             text = path.read_text(encoding="utf-8", errors="ignore")
-            problems += [f"非公開の語「{t}」: {name}" for t, pattern in terms if pattern.search(text)]
+            problems += [f"非公開の語「{t}」: {name}" for t, pattern, allowed in terms
+                         if name not in allowed and pattern.search(text)]
     if args.since:
         messages = _git("log", "--format=%H%n%B", f"{args.since}..HEAD")
-        problems += [f"非公開の語「{t}」: コミットメッセージ" for t, pattern in terms if pattern.search(messages)]
+        problems += [f"非公開の語「{t}」: コミットメッセージ" for t, pattern, _ in terms if pattern.search(messages)]
     if "dev/private_terms.txt" in files():
         problems.append("dev/private_terms.txt 自体が追跡されています")
     if problems:

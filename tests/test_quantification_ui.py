@@ -35,8 +35,8 @@ def test_mouse_resize_keeps_centres_and_downloads_excel(quant_project):
         page.mouse.down()
         page.mouse.move(x+2*scale_x,y+scale_y, steps=5)
         page.mouse.up()
-        expect(page.get_by_label('枠の幅 (px)')).to_have_value('14')
-        expect(page.get_by_label('枠の高さ (px)')).to_have_value('8')
+        expect(box.locator('rect').first).to_have_attribute('width', '14')
+        expect(box.locator('rect').first).to_have_attribute('height', '8')
         expect(page.get_by_test_id('quant-results-empty')).to_be_visible()
         after = request.get(url+'/api/project').json()
         assert centres(group_of(after)) == before
@@ -52,7 +52,7 @@ def test_mouse_resize_keeps_centres_and_downloads_excel(quant_project):
         assert book['定量結果']['B2'].data_type == 's'
         page.reload()
         page.get_by_role('tab', name='3. 定量(Optional)').click()
-        expect(page.get_by_label('枠の幅 (px)')).to_have_value('14')
+        expect(box.locator('rect').first).to_have_attribute('width', '14')
         assert centres(group_of(request.get(url+'/api/project').json())) == before
 
 
@@ -93,3 +93,86 @@ def test_missing_raw16_file_disables_saved_group_compute_and_exports(quant_proje
         expect(page.get_by_role('button', name='計算', exact=True)).to_be_disabled()
         expect(page.get_by_test_id('quant-csv')).to_have_count(0)
         expect(page.get_by_test_id('quant-excel')).to_have_count(0)
+
+
+def test_invert_changes_display_only_and_preserves_raw_results(quant_project, tmp_path):
+    from PIL import Image
+
+    root, client, project, _, source_path = quant_project
+    project, group = start(client, project)
+    project = configure(client, project, group['group_id'], lanes=LANES)
+    compute(client, project, group['group_id'])
+    raw_before = source_path.read_bytes()
+    with browser_page(root) as (page, request, url):
+        page.get_by_role('tab', name='3. 定量(Optional)').click()
+        expect(page.get_by_test_id('quant-csv')).to_be_visible()
+        before = request.get(url + '/api/project').json()
+        csv_before = request.get(url + '/api/quantification_csv/' + group['group_id']).body()
+        preview = page.locator('.quant-canvas svg image')
+        toggle = page.get_by_role('button', name='白黒反転', exact=True)
+        expect(toggle).to_have_attribute('aria-pressed', 'false')
+        def background_pixel():
+            screenshot = Image.open(io.BytesIO(preview.screenshot())).convert('RGB')
+            return screenshot.getpixel((int(screenshot.width * 2 / 96), int(screenshot.height * 50 / 64)))
+        normal = background_pixel()
+        assert max(normal) < 10
+        toggle.click()
+        expect(toggle).to_have_attribute('aria-pressed', 'true')
+        inverted = background_pixel()
+        assert inverted == tuple(255 - v for v in normal)
+        page.screenshot(path=str(tmp_path / 'inverted.png'))
+        expect(page.get_by_test_id('quant-csv')).to_be_visible()
+        assert request.get(url + '/api/project').json() == before
+        assert request.get(url + '/api/quantification_csv/' + group['group_id']).body() == csv_before
+        assert source_path.read_bytes() == raw_before
+        toggle.focus()
+        page.keyboard.press('Space')
+        expect(toggle).to_have_attribute('aria-pressed', 'false')
+        assert background_pixel() == normal
+
+
+def test_simple_ui_computes_without_confirmation_and_keeps_settings_during_roi_save(quant_project):
+    root, client, project, _, _ = quant_project
+    project, group = start(client, project)
+    configure(client, project, group['group_id'], lanes=LANES, source_confirmed=False)
+    with browser_page(root) as (page, request, url):
+        page.get_by_role('tab', name='3. 定量(Optional)').click()
+        pane = page.get_by_test_id('quant-pane')
+        expect(pane.get_by_label('枠の幅 (px)')).to_have_count(0)
+        expect(pane.get_by_label('枠の高さ (px)')).to_have_count(0)
+        expect(pane.locator('input:not([type="checkbox"]):visible')).to_have_count(0)
+        expect(pane.get_by_text('確認した', exact=False)).to_have_count(0)
+        expect(page.get_by_test_id('quant-readout')).not_to_contain_text('px')
+        calculate = page.get_by_role('button', name='計算', exact=True)
+        expect(calculate).to_be_enabled()
+        calculate.click()
+        expect(page.get_by_test_id('quant-excel')).to_be_visible()
+        assert group_of(request.get(url + '/api/project').json())['source_confirmed'] is False
+
+        page.get_by_text('計算設定', exact=True).click()
+        saturation = page.get_by_label('飽和しきい値（任意）')
+        saturation.fill('60000')
+        expect(calculate).to_be_disabled()
+        box = page.locator('g.roi.band[data-lane="1"]')
+        x_before = int(box.get_attribute('data-x'))
+        box.focus()
+        page.keyboard.press('ArrowRight')
+        expect(box).to_have_attribute('data-x', str(x_before + 1))
+        page.wait_for_function("async () => (await (await fetch('/api/project')).json()).quantification_groups[0].lanes[0].x === " + str(x_before + 1))
+        expect(saturation).to_have_value('60000')
+        expect(calculate).to_be_disabled()
+        page.get_by_role('button', name='設定を保存', exact=True).click()
+        expect(calculate).to_be_enabled()
+        calculate.click()
+        expect(page.get_by_test_id('quant-excel')).to_be_visible()
+        after = group_of(request.get(url + '/api/project').json())
+        assert after['saturation_value'] == 60000
+        assert after['source_confirmed'] is False
+
+        page.get_by_label('レーン 1 を除外', exact=True).check()
+        expect(page.get_by_test_id('quant-results-empty')).to_be_visible()
+        expect(calculate).to_be_enabled()
+        calculate.click()
+        expect(page.get_by_test_id('quant-excel')).to_be_visible()
+        excluded = group_of(request.get(url + '/api/project').json())['results']['rows'][0]
+        assert excluded['status'] == 'excluded' and excluded['net_signal'] is None

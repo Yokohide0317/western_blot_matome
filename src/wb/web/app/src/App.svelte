@@ -268,9 +268,9 @@
               onadd={addRow} onsetincluded={setIncluded} ondelete={deleteRow} onreorder={reorder} onlanes={setLanes} onsetnames={setNames} onlaneedges={saveLaneBoundaries} onediting={setEditing}/>
           {:else}
             <QuantificationPane {project} panels={qPanels} {busy} pending={qDraft !== null || dragging} bind:panelId={qPanelId} bind:groupId={qGroupId} bind:selectedLaneId={qLaneId}
-              group={qGroup} lanes={qLanes} image={qImage} info={qInfo} infoError={qInfoError} csvUrl={qGroup ? quantificationCsvUrl(qGroup.group_id) : ''} excelUrl={qGroup ? quantificationExcelUrl(qGroup.group_id) : ''}
+              group={qGroup} lanes={qLanes} info={qInfo} infoError={qInfoError} csvUrl={qGroup ? quantificationCsvUrl(qGroup.group_id) : ''} excelUrl={qGroup ? quantificationExcelUrl(qGroup.group_id) : ''}
               onstart={qStart} onsettings={qSettings} onlane={(laneId, change, immediate) => qEdit(lanes => updateLane(lanes, laneId, change), immediate ? 'now' : 'soon')}
-              onsetroi={(laneId, kind, x, y) => qMoveTo(laneId, kind, x, y, 'now')} oncompute={qCompute}/>
+              oncompute={qCompute}/>
           {/if}
         </section>
         <section aria-label="元画像">

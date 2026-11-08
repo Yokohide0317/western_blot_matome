@@ -1,6 +1,6 @@
 <script>
   import { zoomedView } from '../lib/editing.js';
-  import { arrowDelta, overlapIssues, formatNumber, resizeFromDrag } from '../lib/quantification.js';
+  import { arrowDelta, overlapIssues, resizeFromDrag } from '../lib/quantification.js';
   import Icon from './Icon.svelte';
   // Raw-pixel view of one quantification group. Every coordinate here is a full-resolution raw pixel.
   export let group = null;
@@ -20,6 +20,7 @@
   const handles = [[-1,-1], [0,-1], [1,-1], [-1,0], [1,0], [-1,1], [0,1], [1,1]];
 
   const MAX_ZOOM = 40;
+  let inverted = false; // Display preference only; never sent to the measurement API.
   let svg, vb = null, viewerWidth = 1, viewerHeight = 1, drag = null, pan = null, resetKey = '', broken = false;
 
   $: baseSize = {width: group?.width_px ?? 1, height: group?.height_px ?? 1};
@@ -150,7 +151,7 @@
 
 <svelte:window on:blur={() => { endBox(); endPan(); endResize(); }}/>
 
-<div class="quant-canvas">
+<div class="quant-canvas" class:inverted>
   <div class="bar">
     <div class="seg" role="group" aria-label="拡大">
       <button class="view" aria-label="縮小" title="縮小" disabled={!image || !vb} on:click={() => zoomBy(1 / 1.6)}>−</button>
@@ -158,16 +159,18 @@
       <button class="view" aria-label="全体" title="画像全体を表示" aria-pressed={!vb} disabled={!image} on:click={() => vb = null}><Icon name="zoom-whole"/></button>
       <button class="view" aria-label="選択レーンに寄る" title="選択レーンに寄る" disabled={!selectedLane} on:click={focusLane}><Icon name="zoom-membrane"/></button>
     </div>
+    <button class="invert" aria-pressed={inverted} disabled={!image || !!loadError || broken}
+      title="表示だけを反転します。定量値と信号の向きは変わりません。" on:click={() => inverted = !inverted}>白黒反転</button>
     <span class="legend" aria-hidden="true"><i class="swatch band"></i>バンド <i class="swatch bg"></i>背景</span>
     <span class="grow"></span>
-    {#if image}<span class="pill" data-testid="quant-image-size">{formatNumber(image.width)} × {formatNumber(image.height)} px · {zoom.toFixed(1)}×</span>{/if}
+    {#if image}<span class="pill" aria-label="表示倍率">{zoom.toFixed(1)}×</span>{/if}
   </div>
   <div class="stage">
     {#if group && image && !loadError}
       <svg bind:this={svg} class="canvas" class:zoomed={!!vb} class:panning={!!pan} viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`} preserveAspectRatio="xMidYMid meet"
         bind:clientWidth={viewerWidth} bind:clientHeight={viewerHeight} data-zoom={zoom.toFixed(3)} aria-label="定量用の元画像" role="group" use:wheelZoom
         on:pointerdown={startPan} on:pointermove={movePan} on:pointerup={endPan} on:pointercancel={endPan} on:lostpointercapture={endPan} on:dblclick={() => vb = null}>
-        <image preserveAspectRatio="none" class:crisp={zoom > 4} href={imageUrl} width={image.width} height={image.height} on:error={() => broken = true}/>
+        <image preserveAspectRatio="none" class:inverted class:crisp={zoom > 4} href={imageUrl} width={image.width} height={image.height} on:error={() => broken = true}/>
         {#each visibleLanes as lane (lane.lane_id)}
           {#each ['background', 'band'] as kind}
             {@const x = kind === 'band' ? lane.x : lane.background_x}
@@ -203,9 +206,7 @@
   {#if selectedLane}
     <div class="readout" aria-live="polite" data-testid="quant-readout">
       <b>レーン {selectedLane.lane_id}</b>
-      <span>バンド x {selectedLane.x}, y {selectedLane.y}</span>
-      <span>背景 x {selectedLane.background_x}, y {selectedLane.background_y}</span>
-      <span>枠 {size.width} × {size.height} px</span>
+      <span>枠をドラッグして移動、角・辺で全レーンのサイズを変更</span>
       {#if issues[selectedLane.lane_id]}<span class="warning">▲ {issues[selectedLane.lane_id].join('、')}</span>{/if}
     </div>
   {/if}
@@ -215,6 +216,8 @@
   .quant-canvas { display: flex; flex-direction: column; min-height: 0; height: 100%; }
   .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; flex-wrap: wrap; border-bottom: 1px solid var(--border); background: #fff; }
   .grow { flex: 1; }
+  .invert { font-size: var(--text-meta); }
+  .invert[aria-pressed='true'] { background: var(--teal); color: #fff; border-color: var(--teal); }
   .pill { font-size: var(--text-meta); background: #eef3f4; border-radius: 99px; padding: 2px 9px; white-space: nowrap; }
   .seg { display: inline-flex; border: 1px solid #c8d3d8; border-radius: 7px; overflow: hidden; }
   .seg button { border: 0; border-radius: 0; padding: 3px 11px; font-size: var(--text-meta); background: #fff; }
@@ -223,13 +226,15 @@
   .seg .view { display: inline-flex; align-items: center; justify-content: center; min-width: 38px; height: 26px; }
   .legend { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-meta); color: var(--secondary); }
   .swatch { display: inline-block; width: 14px; height: 10px; margin-left: 6px; }
-  .swatch.band { border: 2px solid #36e0d6; }
-  .swatch.bg { border: 2px dashed #ffb454; }
+  .swatch.band { border: 2px solid var(--roi-band, #36e0d6); }
+  .swatch.bg { border: 2px dashed var(--roi-background, #ffb454); }
   .stage { flex: 1; min-height: 340px; background: #1c2428; position: relative; }
   .canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; cursor: default; }
   .canvas.zoomed { cursor: grab; }
   .canvas.panning { cursor: grabbing; }
   .canvas image.crisp { image-rendering: pixelated; }
+  .canvas image.inverted { filter: invert(1); }
+  .quant-canvas.inverted { --roi-band: #286b6c; --roi-background: #9a4d00; }
   .blank { color: #9fb0b7; display: grid; place-items: center; height: 100%; padding: 16px; text-align: center; font-size: var(--text-body); }
   .blank.over { position: absolute; inset: 0; background: #1c2428e6; }
   .roi { cursor: move; outline: none; }
@@ -237,9 +242,9 @@
   .roi .resize-handle { fill: #fff; stroke: #193238; stroke-width: 1.5; stroke-dasharray: none; }
   .roi .resize-handle:focus-visible { fill: #ffd23f; outline: none; }
   .roi text { font-weight: 700; paint-order: stroke; stroke: #0d1a1f; stroke-width: 3px; stroke-linejoin: round; }
-  .roi.band rect { stroke: #36e0d6; fill: #36e0d610; }
+  .roi.band rect { stroke: var(--roi-band, #36e0d6); fill: #36e0d610; }
   .roi.band text { fill: #d9fffa; }
-  .roi.background rect { stroke: #ffb454; stroke-dasharray: 6 4; fill: #ffb45410; }
+  .roi.background rect { stroke: var(--roi-background, #ffb454); stroke-dasharray: 6 4; fill: #ffb45410; }
   .roi.background text { fill: #ffe6c2; }
   .roi.selected rect { stroke-width: 3; }
   .roi.excluded { opacity: .45; }

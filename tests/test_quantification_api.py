@@ -340,19 +340,14 @@ def test_bounds_overlap_and_integer_validation(quant_project):
     assert fractional.status_code == 422
 
 
-def test_compute_requires_confirmation_and_exact_float64_math(quant_project):
+def test_compute_without_confirmation_uses_exact_float64_math(quant_project):
     _, client, project, pixels, _ = quant_project
     project, group = start(client, project)
     group_id = group["group_id"]
 
-    unconfirmed = client.post(
-        "/api/compute_quantification",
-        json={"group_id": group_id, "expected_revision": project["project_revision"]},
-    )
-    assert unconfirmed.status_code == 422
-
-    project = configure(client, project, group_id, lanes=LANES)
+    project = configure(client, project, group_id, lanes=LANES, source_confirmed=False)
     project = compute(client, project, group_id)
+    assert group_of(project)["source_confirmed"] is False
     rows = {row["lane_id"]: row for row in group_of(project)["results"]["rows"]}
 
     for lane in LANES:

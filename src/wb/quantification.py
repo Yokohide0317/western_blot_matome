@@ -94,8 +94,6 @@ def validate(a, g):
 
 
 def compute(project, root, g):
-    if not g.source_confirmed:
-        raise ValueError('線形な16-bit元画像であることを確認してください')
     a = load(project, root, g)
     validate(a, g)
     names = identity(project, g)
@@ -120,7 +118,7 @@ def current(project, root, g):
         a = load(project, root, g)
         height, width = a.shape
         validate(a, g)
-        ok = bool(g.source_confirmed and g.results and g.results['fingerprint'] == fingerprint(project, g))
+        ok = bool(g.results and g.results['fingerprint'] == fingerprint(project, g))
         return dict(width=a.shape[1], height=a.shape[0], results_current=ok, **({} if ok else {'reason':'未計算または再計算が必要です'}))
     except (ValueError, OSError) as e:
         return dict(width=width, height=height, results_current=False, reason=str(e))

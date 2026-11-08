@@ -145,7 +145,7 @@ relative[i] = normalized[i] / normalized[基準レーン]
 
 - `POST /api/start_quantification` `{panel_id, capture_id?, expected_revision}`: グループの初期化。定量用の16-bitグレースケール元画像が無い・ハッシュが一致しない場合は422。初期ROIは控えめな配置で、表示画像との対応が未確認なら図の座標から推測しない。
 - `POST /api/update_quantification` `{group_id, width_px?, height_px?, signal_polarity?, source_confirmed?, saturation_value?, lanes?, expected_revision}`: 共通サイズ・極性・確認状態・飽和上限・レーン位置の更新。サイズ変更は全レーンと背景枠の中心を保ち、画像外になる変更は422。レーンごとのサイズ指定は受け付けない。いずれの変更でも `results` を消す。
-- `POST /api/compute_quantification` `{group_id, expected_revision}`: 現設定の再検証、計算、結果の保存。`source_confirmed` が偽なら422。背景補正は `float64` で行い、負値は保持し、飽和したレーンは `net_signal = null` にする。範囲外・バンドと背景の重複は422。
+- `POST /api/compute_quantification` `{group_id, expected_revision}`: 現設定の再検証、計算、結果の保存。raw16元画像を検証して計算する。手動の確認チェックは不要（`source_confirmed` は旧版互換のため保持）。背景補正は `float64` で行い、負値は保持し、飽和したレーンは `net_signal = null` にする。範囲外・バンドと背景の重複は422。
 - `GET /api/quantification_info/{group_id}`: 元画像の寸法と、現在のハッシュ・設定・試料／レーン構成に対して結果が最新かを返す。
 - `GET /api/quantification_source/{group_id}.png`: 定量用の元画像から作った表示専用の8-bitプレビュー。フル解像度。値の計算には使わない。
 - `GET /api/quantification_csv/{group_id}`: 条件・座標・結果のCSV。結果が未計算または古い場合は422。UTF-8 BOM付きで、数式として解釈される試料名は無害化する。

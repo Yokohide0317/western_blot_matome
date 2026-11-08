@@ -99,6 +99,8 @@ Claudeアプリの「Code」タブ（または Claude Code / Codex）で、デ�
 
 結果はデータの隣に保存されます（`<フォルダ名>.wblot` と `wblot_output/exports/` のPNG・PPTX）。画面のPPTX・PNGボタンを押すと、同じファイルがダウンロードもされます。
 
+PPTXの2枚目には、切り出す前の全体を発光とマーカーで重ねた「Merge」画像が入ります。露光は、すべての段でバンドがはっきり見えるものを自動で選びます（一部のバンドが少し赤く＝飽和することがあります）。
+
 エージェントを使わずに開くときは、`wbm open "<ZIPまたはフォルダ>"` を実行するか、`http://127.0.0.1:8765/` の「ファイルを開く」「フォルダを開く」から選びます。
 
 ## ファイル名の設定（ラボごとに違う場合）
@@ -182,7 +184,7 @@ wbm reorder B A                               # 並べ替え
 wbm exclude C                                 # 図から除外
 wbm duplicate A                               # 段を複製
 
-wbm export pptx                               # PowerPoint
+wbm export pptx                               # PowerPoint（2枚目に全体のMerge画像。--no-merge で省く）
 wbm export png                                # PNG
 wbm config --check "path/to/ChemiDoc_folder"  # ファイル名の読み方を確認
 ```

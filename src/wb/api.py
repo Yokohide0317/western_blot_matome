@@ -989,7 +989,7 @@ def confirm_alignment(project_dir, image_set_id, evidence, expected_revision):
     return _save(project_dir, project, expected_revision, "confirm_alignment", evidence.strip())
 
 
-def export_project(project_dir, kind, expected_revision=None):
+def export_project(project_dir, kind, expected_revision=None, merge=True):
     if kind not in ("pptx", "png"):
         raise ValueError("書き出し形式はpptxかpngを指定してください")
     root = P.locate(project_dir).parent
@@ -1023,7 +1023,7 @@ def export_project(project_dir, kind, expected_revision=None):
         os.close(fd)
         break
     try:
-        export.export_pptx(project, root, candidate)
+        export.export_pptx(project, root, candidate, merge=merge)
     except BaseException:
         candidate.unlink(missing_ok=True)
         raise

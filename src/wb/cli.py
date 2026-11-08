@@ -95,6 +95,8 @@ def parser():
             command.add_argument("--reset", action="store_true", help="自動のマーカー範囲に戻す")
         if name == "export":
             command.add_argument("kind", choices=("pptx", "png"))
+            command.add_argument("--no-merge", action="store_true",
+                                 help="PPTXの2枚目に入れる全体画像（発光＋マーカーの重ね合わせ）を省く")
         if name == "config":
             command.add_argument("--init", action="store_true", help="説明つきの設定ファイルを作る（既にあれば変更しない）")
             command.add_argument("--check", metavar="ZIPまたはフォルダ", help="今の設定でファイル名がどう読まれるかを表示")
@@ -170,7 +172,7 @@ def _execute(args):
             }
         return proposal
     if name == "export":
-        return api.export_project(path, args.kind)
+        return api.export_project(path, args.kind, merge=not args.no_merge)
     if name == "overview":
         return api.guide_image(path, args.frame, args.grid, stretch=not args.raw)
     project = api._load(path)

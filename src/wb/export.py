@@ -124,8 +124,33 @@ def _table(slide, element: dict) -> None:
     table.rows[0].height = Inches(element["h"])
 
 
-def export_pptx(project: Project, project_dir, out_path) -> Path:
-    """Write editable labels/tables and exact rendered PNG picture parts atomically."""
+def _merge_slide(presentation, merge, slide_w: float, slide_h: float) -> None:
+    """The whole blot after the figure: chemiluminescence × marker, one exposure for every membrane."""
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    margin, top = 0.5, 1.15
+    title = slide.shapes.add_textbox(Inches(margin), Inches(0.3), Inches(slide_w - 2 * margin), Inches(0.45))
+    _text_frame(title.text_frame, {"text": "Merge", "font_size": 20, "bold": True})
+    seconds = f"{merge.exposure_s:g} 秒" if merge.exposure_s else merge.capture_id
+    what = f"発光 {seconds} ＋ マーカー" if merge.marker_frame_id else f"発光 {seconds}（マーカーは位置合わせが無いため重ねていません）"
+    caption = slide.shapes.add_textbox(Inches(margin), Inches(0.72), Inches(slide_w - 2 * margin), Inches(0.32))
+    _text_frame(caption.text_frame, {"text": f"{what}／切り出し前の全体", "font_size": 12, "color": "555555"})
+    box_w, box_h = slide_w - 2 * margin, slide_h - top - 0.35
+    scale = min(box_w / merge.width, box_h / merge.height)
+    w, h = merge.width * scale, merge.height * scale
+    slide.shapes.add_picture(BytesIO(merge.png), Inches(margin + (box_w - w) / 2), Inches(top), Inches(w), Inches(h))
+    slide.notes_slide.notes_text_frame.text = "\n".join([
+        f"merge exposure: {merge.capture_id} ({merge.reason})",
+        f"reference frame: {merge.reference_frame_id}",
+        f"marker frame: {merge.marker_frame_id or 'none'}",
+        "blend: chemiluminescence × colorimetric marker (multiply), both mapped into the reference frame",
+    ])
+
+
+def export_pptx(project: Project, project_dir, out_path, merge: bool = True) -> Path:
+    """Write editable labels/tables and exact rendered PNG picture parts atomically.
+
+    With ``merge`` the whole blot (chemiluminescence × marker) follows the figure on its own slide.
+    """
     layout = compute_layout(project, pptx_markers=True)
     presentation = Presentation()
     presentation.slide_width = Inches(layout["slide"]["w"])
@@ -158,6 +183,15 @@ def export_pptx(project: Project, project_dir, out_path) -> Path:
         if adoption["display_mappings"]:
             notes.append("raw16 display mappings: " + json.dumps(adoption["display_mappings"], sort_keys=True))
         slide.notes_slide.notes_text_frame.text = "\n".join(notes)
+    if merge:
+        from wb.merge import render_merges
+
+        skipped = []
+        for item in render_merges(project, Path(project_dir), skipped):
+            _merge_slide(presentation, item, layout["slide"]["w"], layout["slide"]["h"])
+        if skipped and len(presentation.slides):
+            notes = presentation.slides[0].notes_slide.notes_text_frame
+            notes.text = notes.text + "\nmerge slide skipped: " + "; ".join(skipped)
     return _atomic_write(Path(out_path), presentation.save)
 
 

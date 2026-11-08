@@ -76,3 +76,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .edit-selection { font-size: var(--text-meta); padding: 2px 8px; border-color: transparent; background: transparent; }
 .add-selection, .add-membrane { width: 32px; height: 28px; padding: 0; font-size: 20px; border-color: transparent; background: transparent; }
 .add-selection { margin-top: 4px; }
+
+/* Keep the optional measurement workspace usable at narrower desktop/tablet widths. */
+.quant-workspace .stage-tabs { flex-wrap: wrap; }
+@media (max-width: 900px) {
+  .workspace.quant-workspace { display: flex; flex-direction: column; overflow: auto; }
+  .quant-workspace > section { overflow: visible; flex: none; }
+  .quant-workspace > section[aria-label='元画像'] { min-height: 440px; order: -1; }
+}

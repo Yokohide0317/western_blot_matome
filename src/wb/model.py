@@ -406,9 +406,40 @@ def _unique(ids: list[str], what: str) -> None:
         raise ValueError(f"duplicate {what} ids")
 
 
+class QuantificationLane(_Closed):
+    lane_id: int = Field(gt=0, strict=True)
+    x: int = Field(ge=0, strict=True)
+    y: int = Field(ge=0, strict=True)
+    background_x: int = Field(ge=0, strict=True)
+    background_y: int = Field(ge=0, strict=True)
+    excluded: bool = False
+
+
+class QuantificationGroup(_Open):
+    group_id: str
+    panel_id: str
+    capture_id: str
+    source_asset_id: str
+    frame_id: str
+    width_px: int = Field(gt=0, strict=True)
+    height_px: int = Field(gt=0, strict=True)
+    signal_polarity: Literal['high', 'low'] = 'high'
+    source_confirmed: bool = False
+    saturation_value: int | None = Field(default=None, ge=0, le=65535, strict=True)
+    lanes: list[QuantificationLane]
+    results: dict[str, Any] | None = None
+
+    @model_validator(mode='after')
+    def unique_lanes(self):
+        if not self.lanes or len({l.lane_id for l in self.lanes}) != len(self.lanes):
+            raise ValueError('Unique nonempty lanes required')
+        return self
+
+
 class Project(_Open):
     schema_version: Literal["1.0"] = "1.0"
     project_id: str
+    quantification_groups: list[QuantificationGroup] = Field(default_factory=list)
     project_revision: int = Field(default=1, ge=1)
     status: str | None = None
     figure_scale_mode: Literal["equal_lane_width"] = "equal_lane_width"

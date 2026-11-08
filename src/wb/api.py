@@ -1140,6 +1140,7 @@ def delete_panel(project_dir, panel_id, expected_revision):
     project = _load(project_dir)
     panel = _get(project.panels, "panel_id", panel_id)
     project.panels.remove(panel)
+    project.quantification_groups = [g for g in project.quantification_groups if g.panel_id != panel_id]
     project.annotations = [a for a in project.annotations if a.panel_id != panel_id]
     for item in project.panels:
         item.control_for_panel_ids = [pid for pid in item.control_for_panel_ids if pid != panel_id]
@@ -1934,3 +1935,78 @@ def approve_all(project_dir, evidence, expected_revision):
         if panel.included:
             _approve(project, panel, evidence, all_transforms=True, project_dir=project_dir)
     return _save(project_dir, project, expected_revision, "approve_all", summary)
+
+
+def start_quantification(project_dir, panel_id, expected_revision, capture_id=None):
+    from wb import quantification as Q
+    from wb.model import QuantificationGroup
+    import uuid
+    p = _load(project_dir)
+    panel = _get(p.panels, 'panel_id', panel_id)
+    capture = _get(p.captures, 'capture_id', capture_id or panel.selected_exposure_id)
+    source_id = capture.analysis_source_asset_id
+    if not source_id:
+        raise ValueError(Q.RAW16_REQUIRED)
+    frames = [f for f in p.frames if f.source_asset_id == source_id]
+    if len(frames) != 1:
+        raise ValueError('定量用画像のページを一意に指定できません')
+    count = panel.display_geometry.lane_layout.lane_count if panel.display_geometry else None
+    count = count or _get(p.membrane_regions, 'region_id', panel.region_id).lane_count
+    if not count:
+        raise ValueError('先にバンド選択でレーン数を設定してください')
+    g = QuantificationGroup(group_id=uuid.uuid4().hex, panel_id=panel_id, capture_id=capture.capture_id, source_asset_id=source_id, frame_id=frames[0].frame_id, width_px=1, height_px=1, lanes=[dict(lane_id=i+1,x=0,y=0,background_x=0,background_y=1) for i in range(count)])
+    a = Q.load(p, P.locate(project_dir).parent, g)
+    h,w = a.shape
+    if h < 2 or w < count:
+        raise ValueError('定量枠を置くには画像が小さすぎます')
+    g.width_px = max(1,w//(count*3))
+    g.height_px = max(1,h//10)
+    for i,l in enumerate(g.lanes):
+        l.x = l.background_x = min(w-g.width_px, int((i+.5)*w/count)-g.width_px//2)
+        l.y = h//2-g.height_px//2
+        l.background_y = 0
+    Q.validate(a,g)
+    p.quantification_groups.append(g)
+    return _save(project_dir,p,expected_revision,'start_quantification')
+
+
+def update_quantification(project_dir, group_id, expected_revision, **changes):
+    from wb import quantification as Q
+    from wb.model import QuantificationGroup
+    allowed = {'width_px','height_px','signal_polarity','source_confirmed','saturation_value','lanes'}
+    if changes.keys()-allowed:
+        raise ValueError('定量設定の項目を確認してください')
+    p = _load(project_dir)
+    g = _get(p.quantification_groups,'group_id',group_id)
+    data = g.model_dump()
+    data.update(changes)
+    if 'lanes' not in changes:
+        if (g.width_px-data['width_px']) % 2 or (g.height_px-data['height_px']) % 2:
+            raise ValueError('中心を保つため、幅・高さは現在の値から2px刻みで変更してください')
+        for l in data['lanes']:
+            for coord in ('x','background_x'):
+                l[coord] += (g.width_px-data['width_px'])//2
+            for coord in ('y','background_y'):
+                l[coord] += (g.height_px-data['height_px'])//2
+    data['results'] = None
+    new = QuantificationGroup.model_validate(data)
+    if (new.width_px, new.height_px) != (g.width_px, g.height_px):
+        old_lanes = {lane.lane_id: lane for lane in g.lanes}
+        for lane in new.lanes:
+            old = old_lanes.get(lane.lane_id)
+            if old is None or any(2 * getattr(lane, coord) + length != 2 * getattr(old, coord) + previous
+                                  for coord, length, previous in (
+                                      ('x', new.width_px, g.width_px), ('background_x', new.width_px, g.width_px),
+                                      ('y', new.height_px, g.height_px), ('background_y', new.height_px, g.height_px))):
+                raise ValueError('サイズ変更時は各枠の中心位置を保ってください')
+    Q.identity(p,new)
+    Q.validate(Q.load(p,P.locate(project_dir).parent,new),new)
+    p.quantification_groups[p.quantification_groups.index(g)] = new
+    return _save(project_dir,p,expected_revision,'update_quantification')
+
+
+def compute_quantification(project_dir, group_id, expected_revision):
+    from wb import quantification as Q
+    p = _load(project_dir)
+    Q.compute(p,P.locate(project_dir).parent,_get(p.quantification_groups,'group_id',group_id))
+    return _save(project_dir,p,expected_revision,'compute_quantification')

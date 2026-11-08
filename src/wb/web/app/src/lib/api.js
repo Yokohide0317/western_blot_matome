@@ -18,3 +18,10 @@ export const panelUrl = (panel, capture, revision) => `api/image/panel/${encodeU
 export const markerUrl = (panel, revision) => `api/image/marker/${encodeURIComponent(panel)}.png?v=${revision}`;
 
 export const isIncluded = panel => panel.included !== false;
+
+// Quantification views use the raw-derived preview and the server's freshness check, never the figure images.
+export const quantificationInfoPath = id => `quantification_info/${encodeURIComponent(id)}`;
+export const quantificationSourceUrl = group => `api/quantification_source/${encodeURIComponent(group.group_id)}.png?v=${encodeURIComponent(`${group.source_asset_id}:${group.frame_id}`)}`;
+export const quantificationCsvUrl = id => `api/quantification_csv/${encodeURIComponent(id)}`;
+
+export const quantificationExcelUrl = id => `api/quantification_excel/${encodeURIComponent(id)}`;

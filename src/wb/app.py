@@ -18,6 +18,9 @@ WEB_DIR = Path(__file__).parent / "web"
 
 # POST /api/<name> -> api function. Each takes expected_revision and returns the saved project.
 OPERATIONS = {
+    "start_quantification": api.start_quantification,
+    "update_quantification": api.update_quantification,
+    "compute_quantification": api.compute_quantification,
     "set_panel_included": api.set_panel_included,
     "set_membrane_included": api.set_membrane_included,
     "duplicate_panel": api.duplicate_panel,
@@ -136,6 +139,76 @@ def create_app(project_dir):
     @app.get("/api/validate")
     def validate():
         return api.validate(location)
+
+    def quantification_context(group_id):
+        from wb import quantification as Q
+        p = api._load(location)
+        return Q, p, Q.find(p.quantification_groups, 'group_id', group_id)
+
+    @app.get('/api/quantification_info/{group_id}')
+    def quantification_info(group_id: str):
+        try:
+            Q, p, g = quantification_context(group_id)
+            return Q.current(p, location.parent, g)
+        except Exception as exc:
+            raise_http(exc)
+
+    @app.get('/api/quantification_source/{group_id}.png')
+    def quantification_source(group_id: str):
+        try:
+            import io
+            import numpy as np
+            from PIL import Image
+            Q, p, g = quantification_context(group_id)
+            a = Q.load(p, location.parent, g).astype(np.float64)
+            lo, hi = float(a.min()), float(a.max())
+            a = ((a-lo)*255/(hi-lo)).astype('uint8') if hi > lo else np.zeros(a.shape, dtype='uint8')
+            out = io.BytesIO()
+            Image.fromarray(a).save(out, format='PNG')
+            return Response(out.getvalue(), media_type='image/png')
+        except Exception as exc:
+            raise_http(exc)
+
+    @app.get('/api/quantification_csv/{group_id}')
+    def quantification_csv(group_id: str):
+        try:
+            import io
+            import csv
+            Q, p, g = quantification_context(group_id)
+            if not Q.current(p, location.parent, g)['results_current']:
+                raise ValueError('定量結果がありません。現在の条件で再計算してください')
+            output = io.StringIO()
+            writer = csv.writer(output)
+            conditions = g.model_dump(exclude={'results','lanes'})
+            writer.writerow(['condition', 'value'])
+            for key,value in conditions.items():
+                writer.writerow([key, safe_csv(value)])
+            source = Q.find(p.sources,'source_asset_id',g.source_asset_id)
+            writer.writerow(['source_sha256',source.sha256])
+            writer.writerow(['formula','raw_sum - area_px * background_mean' if g.signal_polarity == 'high' else 'area_px * background_mean - raw_sum'])
+            keys = list(g.results['rows'][0])
+            coords = ['x','y','background_x','background_y']
+            writer.writerow(keys + coords)
+            for row,lane in zip(g.results['rows'], g.lanes):
+                writer.writerow([safe_csv(row[k]) for k in keys] + [getattr(lane,k) for k in coords])
+            return Response(output.getvalue().encode('utf-8-sig'),media_type='text/csv',headers={'Content-Disposition':'attachment; filename="quantification.csv"'})
+        except Exception as exc:
+            raise_http(exc)
+
+    @app.get('/api/quantification_excel/{group_id}')
+    def quantification_excel(group_id: str):
+        try:
+            Q, p, g = quantification_context(group_id)
+            return Response(Q.excel(p, location.parent, g),
+                            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            headers={'Content-Disposition': 'attachment; filename="quantification.xlsx"'})
+        except Exception as exc:
+            raise_http(exc)
+
+    def safe_csv(value):
+        if isinstance(value,str) and value.lstrip().startswith(('=','+','-','@','\t','\r','\n')):
+            return "'" + value
+        return value
 
     # Read-only helpers are declared before the generic /api/{operation} route.
 

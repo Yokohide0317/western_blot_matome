@@ -35,7 +35,7 @@ jobs:
           uv run pytest -q
       - name: Tests (Windows, server and export)
         if: runner.os == 'Windows'
-        run: uv run pytest -q tests/test_hub.py tests/test_cli.py tests/test_download.py tests/test_layout.py tests/test_export.py tests/test_marker_x.py tests/test_ladder.py
+        run: uv run pytest -q tests/test_hub.py tests/test_cli.py tests/test_download.py tests/test_layout.py tests/test_export.py tests/test_marker_x.py tests/test_ladder.py tests/test_quantification.py tests/test_quantification_api.py
       - name: Install the built wheel like a user would
         shell: bash
         run: |

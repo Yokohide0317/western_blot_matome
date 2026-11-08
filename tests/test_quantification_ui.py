@@ -111,25 +111,26 @@ def test_invert_changes_display_only_and_preserves_raw_results(quant_project, tm
         csv_before = request.get(url + '/api/quantification_csv/' + group['group_id']).body()
         preview = page.locator('.quant-canvas svg image')
         toggle = page.get_by_role('button', name='白黒反転', exact=True)
-        expect(toggle).to_have_attribute('aria-pressed', 'false')
+        expect(toggle).to_have_attribute('aria-pressed', 'true')
         def background_pixel():
             screenshot = Image.open(io.BytesIO(preview.screenshot())).convert('RGB')
             return screenshot.getpixel((int(screenshot.width * 2 / 96), int(screenshot.height * 50 / 64)))
+        inverted = background_pixel()
+        assert min(inverted) > 245
+        page.screenshot(path=str(tmp_path / 'inverted.png'))
+        toggle.click()
+        expect(toggle).to_have_attribute('aria-pressed', 'false')
         normal = background_pixel()
         assert max(normal) < 10
-        toggle.click()
-        expect(toggle).to_have_attribute('aria-pressed', 'true')
-        inverted = background_pixel()
         assert inverted == tuple(255 - v for v in normal)
-        page.screenshot(path=str(tmp_path / 'inverted.png'))
         expect(page.get_by_test_id('quant-csv')).to_be_visible()
         assert request.get(url + '/api/project').json() == before
         assert request.get(url + '/api/quantification_csv/' + group['group_id']).body() == csv_before
         assert source_path.read_bytes() == raw_before
         toggle.focus()
         page.keyboard.press('Space')
-        expect(toggle).to_have_attribute('aria-pressed', 'false')
-        assert background_pixel() == normal
+        expect(toggle).to_have_attribute('aria-pressed', 'true')
+        assert background_pixel() == inverted
 
 
 def test_simple_ui_computes_without_confirmation_and_keeps_settings_during_roi_save(quant_project):

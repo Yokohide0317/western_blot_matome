@@ -9,7 +9,7 @@
 
 <header class="top">
   <div class="left">
-    <a class="brand" href="../../" title="トップページ（最近開いたプロジェクト）">WBM</a>
+    <a class="brand" href="../../" title="トップページ（最近開いたプロジェクト）"><img src="./icon.png" alt="">WBM</a>
     <span class="id" title={project.input_archive?.name || project.project_id}>{project.input_archive?.name || project.project_id}</span>
   </div>
   <div class="right">
@@ -22,7 +22,8 @@
 <style>
   .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; background: #fff; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
   .left, .right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .brand { color: var(--teal); font-size: var(--text-title); font-weight: 600; text-decoration: none; }
+  .brand { display: inline-flex; align-items: center; gap: 6px; color: var(--teal); font-size: var(--text-title); font-weight: 600; text-decoration: none; }
+  .brand img { width: 24px; height: 24px; }
   .brand:hover { text-decoration: underline; }
   .id { font-size: var(--text-meta); color: var(--secondary); max-width: 30ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

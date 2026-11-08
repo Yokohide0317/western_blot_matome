@@ -14,9 +14,9 @@
   ::selection { background: #cfe5e3; color: var(--text); }
   * { box-sizing: border-box; }
   body { margin: 0; font: var(--text-body)/1.5 var(--font-ui); font-synthesis: none; font-variant-numeric: tabular-nums; color: var(--text); background: var(--bg); }
-  header { display: flex; align-items: baseline; gap: 10px; padding: 12px 20px; background: #fff; border-bottom: 1px solid var(--border); }
+  header { display: flex; align-items: center; gap: 8px; padding: 12px 20px; background: #fff; border-bottom: 1px solid var(--border); }
+  header img { width: 24px; height: 24px; }
   header b { color: var(--teal); font-size: var(--text-title); font-weight: 600; }
-  header span { color: var(--muted); font-size: var(--text-meta); }
   main { max-width: 880px; margin: 24px auto 48px; padding: 0 16px; display: grid; gap: 28px; }
   h2 { margin: 0 0 10px; font-size: var(--text-label); color: var(--text); font-weight: 600; }
   .open { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -58,7 +58,7 @@
 </style>
 </head>
 <body>
-<header><b>WBM</b><span>Western Blot Matome</span></header>
+<header><img src="icon.png" alt=""><b>WBM</b></header>
 <main>
   <section aria-label="開く">
     <h2>開く</h2>

@@ -63,8 +63,6 @@
 </script>
 
 <div class="quant" data-testid="quant-pane">
-  <p class="note">raw16元画像で枠を合わせ、背景を差し引いて定量します。枠は全レーン同じサイズです。</p>
-
   <section aria-label="段の選択">
     <h2>段</h2>
     {#if panels.length}
@@ -185,7 +183,7 @@
   .quant { padding: 12px 16px 24px; overflow: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
   section, .settings { border: 1px solid var(--border); border-radius: 8px; background: #fff; padding: 8px 12px 12px; }
   h2 { margin: 0 0 6px; font-size: var(--text-body); font-weight: 600; color: #33474f; display: flex; align-items: center; gap: 8px; }
-  .note, .help, .empty-note { font-size: var(--text-meta); color: var(--muted); margin: 0; text-wrap: pretty; }
+  .help, .empty-note { font-size: var(--text-meta); color: var(--muted); margin: 0; text-wrap: pretty; }
   .help { margin-top: 4px; }
   .warn { margin: 0; font-size: var(--text-meta); color: #9a3412; background: #fff6ed; border: 1px solid #f3c9a5; border-radius: 6px; padding: 6px 10px; }
   .error { margin: 4px 0 0; font-size: var(--text-meta); color: #a33b32; font-weight: 600; }

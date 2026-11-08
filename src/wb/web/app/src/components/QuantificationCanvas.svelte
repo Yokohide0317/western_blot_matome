@@ -20,7 +20,7 @@
   const handles = [[-1,-1], [0,-1], [1,-1], [-1,0], [1,0], [-1,1], [0,1], [1,1]];
 
   const MAX_ZOOM = 40;
-  let inverted = false; // Display preference only; never sent to the measurement API.
+  let inverted = true; // Display preference only; never sent to the measurement API.
   let svg, vb = null, viewerWidth = 1, viewerHeight = 1, drag = null, pan = null, resetKey = '', broken = false;
 
   $: baseSize = {width: group?.width_px ?? 1, height: group?.height_px ?? 1};
@@ -206,7 +206,6 @@
   {#if selectedLane}
     <div class="readout" aria-live="polite" data-testid="quant-readout">
       <b>レーン {selectedLane.lane_id}</b>
-      <span>枠をドラッグして移動、角・辺で全レーンのサイズを変更</span>
       {#if issues[selectedLane.lane_id]}<span class="warning">▲ {issues[selectedLane.lane_id].join('、')}</span>{/if}
     </div>
   {/if}

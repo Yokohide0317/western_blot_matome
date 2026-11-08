@@ -33,6 +33,7 @@ def parser():
         "add-membrane": "メンブレンと段を手動追加",
         "overview": "座標の目盛り付きで元画像全体を書き出す（膜の位置を読み取る・確かめる用）",
         "lanes": "レーン数を設定",
+        "quantify": "raw16で定量（バンド選択から枠を配置）",
         "marker": "マーカーを左右にトリミング・移動（縦はバンドの範囲と共通）",
         "export": "PPTXかPNGを書き出す",
         "validate": "元画像と編集内容を検証",
@@ -77,6 +78,27 @@ def parser():
             command.add_argument("count", type=int)
             command.add_argument("--panel")
             command.add_argument("--samples")
+        if name == "quantify":
+            actions = command.add_subparsers(dest='quant_action', required=True)
+            for action, help_text in {
+                'start': '段のバンド選択から定量枠を作成',
+                'show': '定量グループと結果を表示（ID省略で一覧）',
+                'place': '現在のバンド選択から枠を再配置（結果を消去）',
+                'update': 'JSONファイルで枠や計算設定を変更',
+                'compute': '保存した枠で計算',
+                'export': '計算済みの結果をExcel・CSVに出力',
+            }.items():
+                q = actions.add_parser(action, help=help_text, description=help_text)
+                q.add_argument('target', nargs='?' if action == 'show' else None,
+                               help='段のラベルまたはID' if action == 'start' else '定量グループID')
+                q.add_argument('--project', default=argparse.SUPPRESS)
+                q.add_argument('--json', action='store_true', default=argparse.SUPPRESS)
+                if action == 'start':
+                    q.add_argument('--capture', help='定量に使う撮影ID（省略時は段の採用露光）')
+                if action == 'update':
+                    q.add_argument('--settings', required=True, help='update_quantificationの変更内容を記したJSONファイル')
+                if action == 'export':
+                    q.add_argument('--format', choices=('excel', 'csv'), default='excel')
         if name == "set-exposure":
             command.add_argument("capture_id")
         if name == "rename":
@@ -139,6 +161,8 @@ def _execute(args):
     if name == "open":
         return api.open_project(args.path or target, args.no_browser)
     path = P.locate(target)
+    if name == 'quantify':
+        return _quantify(path, args)
     if name == "status":
         return api.status(path)
     if name == "validate":
@@ -235,6 +259,48 @@ def _execute(args):
     return receipt
 
 
+def _quantify(path, args):
+    from pathlib import Path
+    from uuid import uuid4
+    from wb import quantification as Q
+    project = api._load(path)
+    revision = project.project_revision
+    action = args.quant_action
+    if action == 'show' and args.target is None:
+        return {'project_revision': revision, 'groups': [
+            {'group_id': g.group_id, 'panel_id': g.panel_id, 'capture_id': g.capture_id,
+             'placement_note': getattr(g, 'placement_note', None),
+             **Q.current(project, path.parent, g)} for g in project.quantification_groups]}
+    if action == 'start':
+        panel = api.resolve_panel(project, args.target)
+        project = api.start_quantification(path, panel.panel_id, revision, capture_id=args.capture)
+        group = project.quantification_groups[-1]
+    else:
+        group = Q.find(project.quantification_groups, 'group_id', args.target)
+        if action == 'show':
+            return {'project_revision': revision, 'group': group.model_dump(mode='json'),
+                    **Q.current(project, path.parent, group)}
+        if action == 'place':
+            project = api.place_quantification(path, group.group_id, revision)
+        elif action == 'update':
+            changes = json.loads(Path(args.settings).read_text(encoding='utf-8'))
+            allowed = {'width_px', 'height_px', 'signal_polarity', 'saturation_value', 'lanes'}
+            if not isinstance(changes, dict) or changes.keys() - allowed or not changes:
+                raise ValueError('設定JSONには枠・レーン・信号の向き・飽和しきい値の変更を指定してください')
+            project = api.update_quantification(path, group.group_id, revision, **changes)
+        elif action == 'compute':
+            project = api.compute_quantification(path, group.group_id, revision)
+        elif action == 'export':
+            data = Q.excel(project, path.parent, group) if args.format == 'excel' else Q.csv_bytes(project, path.parent, group)
+            suffix = 'xlsx' if args.format == 'excel' else 'csv'
+            output = P.output_dir(path) / 'exports' / f'quantification-{uuid4().hex[:12]}.{suffix}'
+            with output.open('xb') as stream:
+                stream.write(data)
+            return {'path': str(output), 'group_id': group.group_id}
+        group = Q.find(project.quantification_groups, 'group_id', group.group_id)
+    return {'ok': True, 'project_revision': project.project_revision, 'group': group.model_dump(mode='json')}
+
+
 def _marker_x(project, panel, args):
     from wb.rendering import marker_rect
 
@@ -255,6 +321,9 @@ def _warnings_count(proposal):
 
 def _mutation_message(result):
     revision = result["project_revision"]
+    if 'group' in result:
+        group = result['group']
+        return f"定量 {group['group_id']} を更新しました（版 {revision}）。" + (group.get('placement_note') or '')
     if "panel" in result:
         panel = result["panel"]
         return f"段 {panel['label']} を更新しました（版 {revision}）。"

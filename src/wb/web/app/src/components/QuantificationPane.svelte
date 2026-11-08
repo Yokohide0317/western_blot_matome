@@ -15,6 +15,7 @@
   export let onsettings;            // patch for update_quantification
   export let onlane;                // (laneId, change, immediate)
   export let oncompute;
+  export let onplace;
   export let csvUrl = '';
   export let excelUrl = '';
 
@@ -112,6 +113,7 @@
     {/if}
     {#if infoError}<p class="warn" role="alert">▲ {infoError}</p>{/if}
     {#if !rawAvailable && captures.length}<p class="warn" role="status">この定量グループにはraw16元画像がないため定量できません。raw16 TIFFを取り込んでください。</p>{/if}
+    {#if group.placement_note}<p class="help" role="status" data-testid="quant-placement">{group.placement_note}</p>{/if}
 
     <section aria-label="結果">
       <h2>結果</h2>
@@ -159,6 +161,8 @@
 
     <details class="settings">
       <summary>計算設定</summary>
+      <button disabled={!sourceReady || busy || pending} on:click={onplace}>バンド選択から枠を再配置</button>
+      <p class="help">現在の枠と計算結果を置き換えます。</p>
       <fieldset class="polarity" disabled={busy}>
         <legend>信号の向き</legend>
         {#each Object.entries(polarityNames) as [value, name]}

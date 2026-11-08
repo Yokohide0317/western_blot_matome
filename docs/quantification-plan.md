@@ -134,6 +134,7 @@ relative[i] = normalized[i] / normalized[基準レーン]
 - `group_id`、`panel_id`、`capture_id`、`source_asset_id`、`frame_id`（座標はすべて元画像のフル解像度）。
 - グループ共通の `width_px` / `height_px`、信号極性 `signal_polarity`（`high` / `low`）。
 - 元画像を定量用として確認した `source_confirmed` と、取得時の飽和上限 `saturation_value`（未確認なら `null`）。
+- 自動配置を行ったグループには `placement_method`（`band_selection` / `estimated` / `fallback`）と `placement_note` を記録する。旧グループには必須にしない。
 - レーンごとの `lane_id`、バンドと背景の左上位置 `x` / `y` / `background_x` / `background_y`、除外状態 `excluded`。
 - 計算結果 `results`（`fingerprint` と `rows`）。`rows` はレーンごとの `sample_name`、`area_px`、`raw_sum`、`background_mean`、`net_signal`、`saturated_pixels`、`status` を持つ。
 
@@ -143,7 +144,8 @@ relative[i] = normalized[i] / normalized[基準レーン]
 
 既存の `expected_revision` を使って、次の操作を追加する。
 
-- `POST /api/start_quantification` `{panel_id, capture_id?, expected_revision}`: グループの初期化。定量用の16-bitグレースケール元画像が無い・ハッシュが一致しない場合は422。初期ROIは控えめな配置で、表示画像との対応が未確認なら図の座標から推測しない。
+- `POST /api/start_quantification` `{panel_id, capture_id?, expected_revision}`: グループの初期化。定量用の16-bitグレースケール元画像が無い・ハッシュが一致しない場合は422。初期ROIはバンド選択の範囲・レーン境界（隙間を含む）・回転補正をraw16座標に戻して仮配置する。対応付け済みの表示画像とraw16に変換がなく、縦横比が一致する場合は寸法比で推定し、その旨を `placement_note` に表示する。範囲や対応が不明なら等間隔の仮配置と理由を返す。計算は行わない。
+- `POST /api/place_quantification` `{group_id, expected_revision}`: 現在のバンド選択から再配置し、結果を消去する。既存の極性・飽和しきい値・除外状態は保持する。配置できない場合は422で、既存の枠と結果を保持する。
 - `POST /api/update_quantification` `{group_id, width_px?, height_px?, signal_polarity?, source_confirmed?, saturation_value?, lanes?, expected_revision}`: 共通サイズ・極性・確認状態・飽和上限・レーン位置の更新。サイズ変更は全レーンと背景枠の中心を保ち、画像外になる変更は422。レーンごとのサイズ指定は受け付けない。いずれの変更でも `results` を消す。
 - `POST /api/compute_quantification` `{group_id, expected_revision}`: 現設定の再検証、計算、結果の保存。raw16元画像を検証して計算する。手動の確認チェックは不要（`source_confirmed` は旧版互換のため保持）。背景補正は `float64` で行い、負値は保持し、飽和したレーンは `net_signal = null` にする。範囲外・バンドと背景の重複は422。
 - `GET /api/quantification_info/{group_id}`: 元画像の寸法と、現在のハッシュ・設定・試料／レーン構成に対して結果が最新かを返す。
@@ -185,3 +187,8 @@ relative[i] = normalized[i] / normalized[基準レーン]
 - 公開前に `uv run python dev/check_public.py` と `uv run python dev/check_public.py --since origin/main` を実行する。テスト・説明・確認用画像は合成データと架空名のみを使う。
 
 現行スコープの完了条件は、**定量を使わない既存フローを維持したまま、同じ幅・高さのROIをレーンごとに平行移動して元画像から計算でき、その条件と結果を保存・再現・CSV出力できること**。ローディングコントロールによる正規化は次版の完了条件に含める。
+
+
+## コマンド操作
+
+`wbm quantify start <段> [--capture <撮影ID>]` はWebUIと同じ自動配置を行う。`show [<group_id>]`、`place <group_id>`、`update <group_id> --settings <JSONファイル>`、`compute <group_id>`、`export <group_id> --format excel|csv` を使う。全操作で `--project` と `--json` を利用できる。更新のJSONレシートは `ok`・`project_revision`・対象の `group` を返し、プロジェクト全体は返さない。画素値は再サンプリングせず、共通サイズの整数座標ROIで定量する。自動配置の背景枠はバンドROIとの重なりを避けた候補であり、背景に適切かどうかは元画像上で調整する。

@@ -124,6 +124,31 @@ def current(project, root, g):
         return dict(width=width, height=height, results_current=False, reason=str(e))
 
 
+def csv_bytes(project, root, group):
+    import csv
+    import io
+    if not current(project, root, group)['results_current']:
+        raise ValueError('定量結果がありません。現在の条件で再計算してください')
+    def safe(value):
+        if isinstance(value, str) and value.lstrip().startswith(('=', '+', '-', '@', '\t', '\r', '\n')):
+            return "'" + value
+        return value
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['condition', 'value'])
+    for key, value in group.model_dump(exclude={'results', 'lanes'}).items():
+        writer.writerow([key, safe(value)])
+    source = find(project.sources, 'source_asset_id', group.source_asset_id)
+    writer.writerow(['source_sha256', source.sha256])
+    writer.writerow(['formula', 'raw_sum - area_px * background_mean' if group.signal_polarity == 'high' else 'area_px * background_mean - raw_sum'])
+    keys = list(group.results['rows'][0])
+    coords = ['x', 'y', 'background_x', 'background_y']
+    writer.writerow(keys + coords)
+    for row, lane in zip(group.results['rows'], group.lanes):
+        writer.writerow([safe(row[k]) for k in keys] + [getattr(lane, k) for k in coords])
+    return output.getvalue().encode('utf-8-sig')
+
+
 def excel(project, root, group):
     """Export numeric results and reproducible settings without spreadsheet formulas."""
     from io import BytesIO

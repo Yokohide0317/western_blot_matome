@@ -62,6 +62,10 @@ ChemiDocの書き出しファイル名はラボによって違うことがある
    - 段を複製する（同一膜の別バンド用）: `wbm duplicate <段> --project "<project>" --json`
    - レーン数・試料名を設定する: `wbm lanes <レーン数> [--panel <段>] [--samples 試料1,試料2,...] --project "<project>" --json`（画面上では各段のレーン境界ガイド線をドラッグして幅も調整できる）
    - マーカーを左右にトリミング・移動する（別のラダーに合わせる）: `wbm marker <段> [--left X0] [--right X1] [--shift D] --project "<project>" --json`（座標は切り出しと同じ傾き補正後の座標。`--reset` で自動に戻す）。マーカーの縦範囲は常にバンドの切り出しと同じで、縦を変えるときは `wbm adjust --crop-top/--crop-bottom` でバンドと一緒に変える。画面では「2. バンド選択」でマーカー表示にし、オレンジ枠をドラッグする（上下のハンドルはバンドと連動）。元画像の表示ボタンは、黒丸＝発光、虹色の丸＝マーカー、両方の丸＝Merge（重ね合わせ）。全段のレーン数は「Master Control」で一括変更する
+   - 定量を始める: `wbm quantify start <段> [--capture <撮影ID>] --project "<project>" --json`。バンド選択の範囲・レーン境界・回転補正から、raw16上に全レーン同じ大きさのバンド枠と近くの背景枠を仮配置する。戻り値 `group.group_id` を以後の操作に使う。`group.placement_note` が寸法からの推定や仮の等間隔配置を示す場合は、その旨を伝えて画像上で合わせる。raw16がない場合は定量できない。
+   - 定量の一覧・枠・結果を見る: `wbm quantify show [<group_id>] --project "<project>" --json`。バンド選択を変更した後の再配置は `wbm quantify place <group_id> --project "<project>" --json`（現在の枠と計算結果を置き換える）。
+   - 定量枠や設定を直す: `wbm quantify update <group_id> --settings <JSONファイル> --project "<project>" --json`。JSONには変更する `width_px`・`height_px`、`signal_polarity`（`high` / `low`）、`saturation_value`（整数 / `null`）、`lanes` を指定する。`lanes` は `show` の全レーン一覧を使い、raw16座標の `x`・`y`・`background_x`・`background_y`・`excluded` を編集する。サイズは全枠の中心を保って2px刻みで変える。
+   - 定量を計算・出力する: `wbm quantify compute <group_id> --project "<project>" --json`、`wbm quantify export <group_id> --format excel --project "<project>" --json`（CSVは `--format csv`）。開始・再配置では計算しない。枠と背景を合わせてから計算する。出力先は `wblot_output/exports/` の新しいファイルで、戻り値 `path` に入る。WebUIも同じ保存内容を使う。
 5. **ファイル出力**:
    下書き・確定の区別や承認操作はない。現在の保存内容をそのまま出力する。Colorimetricマーカーが利用可能なら、Selectionと同じ高さで取得して表示・出力する。
    - `wbm export pptx --project "<project>" --json`（PNGなら `wbm export png ...`）

@@ -270,7 +270,7 @@
             <QuantificationPane {project} panels={qPanels} {busy} pending={qDraft !== null || dragging} bind:panelId={qPanelId} bind:groupId={qGroupId} bind:selectedLaneId={qLaneId}
               group={qGroup} lanes={qLanes} info={qInfo} infoError={qInfoError} csvUrl={qGroup ? quantificationCsvUrl(qGroup.group_id) : ''} excelUrl={qGroup ? quantificationExcelUrl(qGroup.group_id) : ''}
               onstart={qStart} onsettings={qSettings} onlane={(laneId, change, immediate) => qEdit(lanes => updateLane(lanes, laneId, change), immediate ? 'now' : 'soon')}
-              oncompute={qCompute}/>
+              oncompute={qCompute} onplace={() => mutate('place_quantification', {group_id: qGroup.group_id}, 'バンド選択から枠を配置しました')}/>
           {/if}
         </section>
         <section aria-label="元画像">

@@ -8,6 +8,7 @@ from playwright.sync_api import expect
 
 from test_app_ui import browser_page
 from test_quantification_api import quant_project, start, configure, compute, LANES, group_of
+from test_quantification_placement import select, centers_of
 
 
 def test_mouse_resize_keeps_centres_and_downloads_excel(quant_project):
@@ -176,3 +177,28 @@ def test_simple_ui_computes_without_confirmation_and_keeps_settings_during_roi_s
         expect(page.get_by_test_id('quant-excel')).to_be_visible()
         excluded = group_of(request.get(url + '/api/project').json())['results']['rows'][0]
         assert excluded['status'] == 'excluded' and excluded['net_signal'] is None
+
+
+def test_ui_starts_from_selection_and_repositions_saved_group(quant_project, tmp_path):
+    import numpy as np
+    root, client, _, _, _ = quant_project
+    select(root, boundaries=[0, .2, .6, 1])
+    with browser_page(root) as (page, request, url):
+        page.get_by_role('tab', name='3. 定量(Optional)').click()
+        page.get_by_role('button', name='定量を開始', exact=True).click()
+        expect(page.get_by_test_id('quant-placement')).to_contain_text('バンド選択から仮配置')
+        box = page.locator('g.roi.band[data-lane="1"]')
+        expect(box).to_have_attribute('data-y', '25')
+        group = group_of(request.get(url + '/api/project').json())
+        np.testing.assert_allclose(centers_of(group), [[13.8, 29], [37.2, 29], [68.4, 29]], atol=.5)
+        page.get_by_role('button', name='計算', exact=True).click()
+        expect(page.get_by_test_id('quant-excel')).to_be_visible()
+        select(root, boundaries=[0, .2, .6, 1], crop={'x0': 6, 'y0': 36, 'x1': 84, 'y1': 46})
+        page.reload()
+        page.get_by_role('tab', name='3. 定量(Optional)').click()
+        page.get_by_text('計算設定', exact=True).click()
+        page.get_by_role('button', name='バンド選択から枠を再配置', exact=True).click()
+        expect(box).to_have_attribute('data-y', '37')
+        expect(page.get_by_test_id('quant-results-empty')).to_be_visible()
+        assert group_of(request.get(url + '/api/project').json())['group_id'] == group['group_id']
+        page.screenshot(path=str(tmp_path / 'auto-placement.png'))

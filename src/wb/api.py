@@ -1939,6 +1939,7 @@ def approve_all(project_dir, evidence, expected_revision):
 
 def start_quantification(project_dir, panel_id, expected_revision, capture_id=None):
     from wb import quantification as Q
+    from wb.quantification_placement import initial
     from wb.model import QuantificationGroup
     import uuid
     p = _load(project_dir)
@@ -1956,18 +1957,21 @@ def start_quantification(project_dir, panel_id, expected_revision, capture_id=No
         raise ValueError('先にバンド選択でレーン数を設定してください')
     g = QuantificationGroup(group_id=uuid.uuid4().hex, panel_id=panel_id, capture_id=capture.capture_id, source_asset_id=source_id, frame_id=frames[0].frame_id, width_px=1, height_px=1, lanes=[dict(lane_id=i+1,x=0,y=0,background_x=0,background_y=1) for i in range(count)])
     a = Q.load(p, P.locate(project_dir).parent, g)
-    h,w = a.shape
-    if h < 2 or w < count:
-        raise ValueError('定量枠を置くには画像が小さすぎます')
-    g.width_px = max(1,w//(count*3))
-    g.height_px = max(1,h//10)
-    for i,l in enumerate(g.lanes):
-        l.x = l.background_x = min(w-g.width_px, int((i+.5)*w/count)-g.width_px//2)
-        l.y = h//2-g.height_px//2
-        l.background_y = 0
-    Q.validate(a,g)
+    g = initial(p, panel, g, a)
     p.quantification_groups.append(g)
     return _save(project_dir,p,expected_revision,'start_quantification')
+
+
+def place_quantification(project_dir, group_id, expected_revision):
+    from wb import quantification as Q
+    from wb.quantification_placement import from_selection
+    p = _load(project_dir)
+    group = _get(p.quantification_groups, 'group_id', group_id)
+    Q.identity(p, group)
+    panel = _get(p.panels, 'panel_id', group.panel_id)
+    placed = from_selection(p, panel, group, Q.load(p, P.locate(project_dir).parent, group))
+    p.quantification_groups[p.quantification_groups.index(group)] = placed
+    return _save(project_dir, p, expected_revision, 'place_quantification')
 
 
 def update_quantification(project_dir, group_id, expected_revision, **changes):

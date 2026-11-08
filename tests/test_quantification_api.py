@@ -186,7 +186,7 @@ def test_start_creates_group_with_shared_size_and_defaults(quant_project):
     assert len(second["quantification_groups"]) == 2
 
 
-def test_default_rois_do_not_trust_unverified_display_coordinates(quant_project):
+def test_default_rois_when_selection_has_no_crop(quant_project):
     root, client, project, _, _ = quant_project
     location = P.locate(root)
     stored = P.load_project(location)
@@ -200,8 +200,8 @@ def test_default_rois_do_not_trust_unverified_display_coordinates(quant_project)
 
     project, group = start(client, project)
     xs = sorted(lane["x"] for lane in group["lanes"])
-    # The display image and the raw file are not known to correspond: even
-    # spacing over the raw width, not the display's lane centres at x=1..3.
+    # Lane centers alone do not specify a band row without a crop.
+    assert group['placement_method'] == 'fallback'
     assert xs[-1] - xs[0] > WIDTH / 2
     assert all(x > 10 for x in xs)
 

@@ -1,6 +1,6 @@
 [project]
 name = "wbm"
-version = "0.4.1"
+version = "0.5.0"
 description = "Western Blot Matome - western blot figure assembly tool"
 readme = "README.md"
 requires-python = ">=3.12"

@@ -107,16 +107,33 @@ PPTXの2枚目には、切り出す前の全体を発光とマーカーで重ね
 
 図の作成とは別に、同じ幅・高さの四角い枠（ROI）でバンドの強さを測れます。画面の「3. 定量(Optional)」で操作し、使わなくてもPPTX・PNGの書き出しはそのまま完了できます。
 
-1. 段を選び、「定量を開始」を押します。
+1. 段を選び、「定量を開始」を押します。バンド選択の範囲とレーン配置を使って、バンド枠と近くの背景枠を仮配置します。
 2. 定量には16-bitグレースケール元画像（raw16）を使います。raw16がない場合はその旨が表示され、定量できません。表示用TIFFは代用できません。
 3. 画像を見ながら、バンドの枠と近くの背景の枠を合わせます。枠の内側をドラッグすると、その枠だけを移動できます。選択した枠の角・辺をドラッグすると、全レーンのバンド枠・背景枠を、各中心位置を固定して一括で伸縮できます（2px刻み）。見づらい場合は「白黒反転」で表示を切り替えられます。
 4. 「計算」で結果を保存し、「Excel」または「CSV」でダウンロードします。Excelには「定量結果」「解析条件」の2シートが入ります。
 
-- 信号の向き・飽和しきい値は「計算設定」で変更できます。
+- 信号の向き・飽和しきい値は「計算設定」で変更できます。バンド選択を変更した後は、同じ欄の「バンド選択から枠を再配置」で反映できます（現在の枠と計算結果を置き換えます）。
+- 自動配置は初期位置の提案です。表示画像とraw16の倍率を寸法から推定した場合は、その旨を表示します。対応が分からない場合は仮の等間隔配置になるため、画像上でバンドと背景を合わせてください。
 - 値は元画像の画素値から計算します。画面の白黒反転・明るさ・コントラスト・拡大率を変えても値は変わりません。
 - 背景を差し引いた値が負になる場合も、ゼロに丸めずそのまま残します。飽和したレーンは有効な値を出しません。
 - 現在は、ローディングコントロールによる正規化・基準レーンに対する相対値には対応していません。
 - 比較するレーンは、同じ膜・同じ露光の画像で揃えてください。
+
+### コマンドで定量する
+
+```bash
+wbm quantify start A --project "<project>" --json
+wbm quantify show --project "<project>" --json
+wbm quantify show <group_id> --project "<project>" --json
+wbm quantify place <group_id> --project "<project>" --json
+wbm quantify update <group_id> --settings settings.json --project "<project>" --json
+wbm quantify compute <group_id> --project "<project>" --json
+wbm quantify export <group_id> --format excel --project "<project>" --json
+```
+
+`start` はバンド選択から新しい定量グループを作り、`group.group_id` と配置の説明を返します。`--capture <撮影ID>` で露光を指定できます。`place` は現在のバンド選択から既存グループを再配置します。計算は `compute` を実行したときだけ行います。`export` は `--format csv` にも対応し、`wblot_output/exports/` 内の新しいファイルのパスを返します。
+
+`update` のJSONには、変更する `signal_polarity`（`high` / `low`）、`saturation_value`（整数または `null`）、`width_px`・`height_px`、`lanes` を指定します。`lanes` は `show` が返す全レーンのリストを使い、`x`・`y`・`background_x`・`background_y`・`excluded` を変更できます。座標はraw16元画像のpxです。サイズ変更は全枠の中心を保つ2px刻みです。
 
 ## ファイル名の設定（ラボごとに違う場合）
 

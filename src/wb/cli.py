@@ -31,6 +31,7 @@ def parser():
         "exclude": "段を除外",
         "duplicate": "段を複製",
         "add-membrane": "メンブレンと段を手動追加",
+        "overview": "座標の目盛り付きで元画像全体を書き出す（膜の位置を読み取る・確かめる用）",
         "lanes": "レーン数を設定",
         "marker": "マーカーを左右にトリミング・移動（縦はバンドの範囲と共通）",
         "export": "PPTXかPNGを書き出す",
@@ -65,6 +66,11 @@ def parser():
             command.add_argument("--rotation", type=float, default=0.0)
             command.add_argument("--membrane-label")
             command.add_argument("--label")
+            command.add_argument("--frame", help="座標の基準にする画像（既定は wbm overview と同じ基準画像）")
+        if name == "overview":
+            command.add_argument("--frame", help="表示する画像のframe_id（既定は膜の座標の基準画像）")
+            command.add_argument("--grid", type=int, help="目盛りの間隔（px、既定は画像の大きさから自動）")
+            command.add_argument("--raw", action="store_true", help="明るさを引き伸ばさずに表示")
         if name == "reorder":
             command.add_argument("panels", nargs="+")
         if name == "lanes":
@@ -140,13 +146,17 @@ def _execute(args):
         proposal = api.propose(path)
         if args.apply:
             saved = api.apply_proposal(path, proposal, project.project_revision)
-            return {
+            result = {
                 "ok": True,
                 "project_revision": saved.project_revision,
                 "panels": api.panel_summaries(saved),
                 "excluded_image_sets": proposal.get("excluded_image_sets", []),
                 "warnings_count": _warnings_count(proposal),
             }
+            if not result["panels"]:
+                result["next"] = ("膜を自動で見つけられませんでした。wbm overview で座標の目盛り付きの画像を見て、"
+                                  "膜ごとに wbm add-membrane で追加してください")
+            return result
         if args.summary:
             return {
                 "panels": [
@@ -161,6 +171,8 @@ def _execute(args):
         return proposal
     if name == "export":
         return api.export_project(path, args.kind)
+    if name == "overview":
+        return api.guide_image(path, args.frame, args.grid, stretch=not args.raw)
     project = api._load(path)
     revision = project.project_revision
     if name == "reorder":
@@ -176,6 +188,7 @@ def _execute(args):
             rotation_deg=args.rotation,
             user_label=args.membrane_label,
             label=args.label,
+            reference_frame_id=args.frame,
         )
         panel = saved.panels[-1]
         entry = next(p for p in api.panel_summaries(saved) if p["panel_id"] == panel.panel_id)

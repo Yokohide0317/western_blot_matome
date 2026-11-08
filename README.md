@@ -164,6 +164,7 @@ wbm rename A "Protein A"                      # ラベル
 wbm set-exposure A CAP_IMG049                 # 採用露光
 wbm adjust A --rotation -1.2 --crop-top 410 --crop-bottom 495   # 角度・切り出し
 wbm add-membrane 200 180 960 540 --rotation 0.5 --label "ACTB"  # 膜を手動追加
+wbm overview                                  # 座標の目盛り付きの全体画像（膜の位置を読む・確かめる）
 wbm lanes 6 --samples WT,KO,Rescue,Ctrl1,Ctrl2,Ctrl3            # レーン数・試料名
 wbm marker A --shift 40                       # マーカーを横に移動（--left/--right、--reset）
 wbm reorder B A                               # 並べ替え

@@ -339,3 +339,55 @@ def render_overview(project, project_dir, frame_id, max_width=1200):
         float(height),
     )
     return image, scale
+
+
+def _grid_step(size):
+    """A round grid spacing that gives roughly 8–16 lines across ``size`` pixels."""
+    for step in (10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000):
+        if size / step <= 16:
+            return step
+    return 5000
+
+
+def render_guide(project, project_dir, frame_id, shapes=(), grid=None, max_width=1600, stretch=True):
+    """An RGB view of a whole frame with a labelled coordinate grid, for an agent to read positions from.
+
+    ``shapes`` are ``(label, polygon, rgb)`` in this frame's coordinates. Grid labels are in
+    frame pixels, so a position read off the image can be passed to ``add-membrane`` as is.
+    ``stretch`` spreads the 1st–99th percentile of brightness so faint membrane edges show; it
+    only affects this guide image, never the figure.
+    """
+    frame = _find(project.frames, "frame_id", frame_id)
+    pixels = load_source_pixels(project, project_dir, frame.source_asset_id)
+    scale = min(1.0, max_width / frame.width)
+    width, height = max(1, round(frame.width * scale)), max(1, round(frame.height * scale))
+    image = cv2.resize(pixels, (width, height), interpolation=cv2.INTER_AREA) if scale < 1 else pixels.copy()
+    if stretch:
+        gray = image.mean(axis=2)
+        low, high = np.percentile(gray, (1, 99))
+        if high - low > 1:
+            image = np.clip((image.astype(np.float32) - low) * (255.0 / (high - low)), 0, 255).astype(np.uint8)
+    # Margins for the axis labels, so they never cover the image.
+    left, top = 56, 26
+    canvas = np.full((height + top, width + left, 3), 255, np.uint8)
+    canvas[top:, left:] = image
+    step = grid or _grid_step(max(frame.width, frame.height))
+    font, ink, line = cv2.FONT_HERSHEY_SIMPLEX, (20, 20, 20), (0, 170, 255)
+    for value in range(0, int(frame.width) + 1, step):
+        x = left + round(value * scale)
+        cv2.line(canvas, (x, top), (x, top + height - 1), line, 1)
+        text_width = cv2.getTextSize(str(value), font, 0.42, 1)[0][0]
+        cv2.putText(canvas, str(value), (min(max(0, x - text_width // 2), canvas.shape[1] - text_width - 2), 18),
+                    font, 0.42, ink, 1, cv2.LINE_AA)
+    for value in range(0, int(frame.height) + 1, step):
+        y = top + round(value * scale)
+        cv2.line(canvas, (left, y), (left + width - 1, y), line, 1)
+        cv2.putText(canvas, str(value), (4, min(top + height - 2, y + 5)), font, 0.42, ink, 1, cv2.LINE_AA)
+    for label, polygon, rgb in shapes:
+        points = np.rint(np.asarray(polygon, np.float64) * scale + [left, top]).astype(np.int32)
+        cv2.polylines(canvas, [points], True, rgb, 2, cv2.LINE_AA)
+        anchor = points[np.argmin(points.sum(axis=1))]
+        text = label if label.isascii() else "?"
+        cv2.putText(canvas, text, (int(anchor[0]) + 4, int(anchor[1]) + 16), font, 0.55, (255, 255, 255), 3, cv2.LINE_AA)
+        cv2.putText(canvas, text, (int(anchor[0]) + 4, int(anchor[1]) + 16), font, 0.55, rgb, 1, cv2.LINE_AA)
+    return canvas, scale, step

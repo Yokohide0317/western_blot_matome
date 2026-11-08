@@ -1529,6 +1529,97 @@ def _next_panel_label(project):
     return f"P{n}"
 
 
+def default_reference_frame(project, image_set_id=None):
+    """``(image_set_id, frame_id)`` that a manually added membrane is drawn on.
+
+    The frame of the Selection already in use, else the series reference, else its
+    longest exposure: the same frame ``wbm overview`` shows by default.
+    """
+    from wb.rendering import frame_for_capture
+
+    active_panel = next((p for p in _ordered_panels(project) if p.included and p.display_geometry), None) or (
+        project.panels[0] if project.panels else None
+    )
+    active_region = (
+        _get(project.membrane_regions, "region_id", active_panel.region_id)
+        if active_panel
+        else (project.membrane_regions[0] if project.membrane_regions else None)
+    )
+    if image_set_id is None:
+        image_set_id = (
+            (active_panel.image_set_id if active_panel else None)
+            or (active_region.image_set_id if active_region else None)
+            or (project.image_sets[0].image_set_id if project.image_sets else None)
+        )
+    if not image_set_id:
+        raise ValueError("撮影系列が見つかりません")
+    image_set = _get(project.image_sets, "image_set_id", image_set_id)
+    frame_id = (
+        (active_panel.display_geometry.reference_frame_id if active_panel and active_panel.display_geometry else None)
+        or (active_region.reference_frame_id if active_region else None)
+        or image_set.reference_frame_id
+    )
+    if frame_id is None:
+        captures = [_get(project.captures, "capture_id", cid) for cid in image_set.capture_ids]
+        longest = max(captures, key=lambda c: (c.exposure_s or 0, c.capture_id))
+        frame_id = frame_for_capture(project, longest.capture_id).frame_id
+    return image_set_id, frame_id
+
+
+def guide_image(project_dir, frame_id=None, grid=None, stretch=True):
+    """Write the whole image with a coordinate grid and the current membranes and Selections.
+
+    For an agent that has to place membranes itself (``wbm overview``): read positions off the
+    grid, ``add-membrane`` them on the returned ``frame_id``, then render again to check.
+    """
+    import cv2
+    from wb.rendering import render_guide
+
+    project = _load(project_dir)
+    root = P.locate(project_dir).parent
+    _, reference_id = default_reference_frame(project)
+    frame_id = frame_id or reference_id
+    frame = _get(project.frames, "frame_id", frame_id)
+    shapes, membranes, selections = [], [], []
+    for region in project.membrane_regions:
+        if region.geometry and region.geometry.frame_id == frame_id:
+            polygon = [list(map(float, pt)) for pt in region.geometry.polygon]
+            shapes.append((region.user_label or region.region_id, polygon, (0, 200, 120)))
+            membranes.append({"label": region.user_label, "included": region.included, "polygon": polygon})
+    for panel in _ordered_panels(project):
+        dg = panel.display_geometry
+        if not dg or not dg.crop_rect or dg.reference_frame_id != frame_id:
+            continue
+        transform = _get(project.transforms, "transform_id", dg.reference_to_rectified_transform_id)
+        crop = dg.crop_rect
+        polygon = Affine.from_json(transform.model_dump()).inverse().apply(Rect(crop.x0, crop.y0, crop.x1, crop.y1).corners())
+        polygon = [[round(float(x), 1), round(float(y), 1)] for x, y in polygon]
+        shapes.append((panel.label, polygon, (255, 120, 0)))
+        selections.append({"label": panel.label, "panel_id": panel.panel_id, "included": panel.included, "polygon": polygon})
+    canvas, scale, step = render_guide(project, root, frame_id, shapes, grid=grid, stretch=stretch)
+    out = P.cache_dir(project_dir) / "overviews" / f"guide-{frame_id}.png"
+    if not cv2.imwrite(str(out), cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)):
+        raise ValueError(f"画像を書き出せませんでした: {out}")
+    frames = []
+    for capture in project.captures:
+        f = next((x for x in project.frames if x.source_asset_id == capture.presentation_source_asset_id), None)
+        if f:
+            frames.append({"frame_id": f.frame_id, "capture_id": capture.capture_id, "modality": capture.modality,
+                           "exposure_s": capture.exposure_s})
+    return {
+        "path": str(out),
+        "frame_id": frame_id,
+        "is_reference": frame_id == reference_id,
+        "width": frame.width,
+        "height": frame.height,
+        "grid_px": step,
+        "image_scale": round(scale, 4),
+        "membranes": membranes,
+        "selections": selections,
+        "frames": frames,
+    }
+
+
 def add_manual_membrane(
     project_dir,
     expected_revision,
@@ -1553,35 +1644,9 @@ def add_manual_membrane(
         raise P.RevisionConflict(f"現在の版は{project.project_revision}です")
     root = P.locate(project_dir).parent
 
-    active_panel = next((p for p in _ordered_panels(project) if p.included and p.display_geometry), None) or (
-        project.panels[0] if project.panels else None
-    )
-    active_region = (
-        _get(project.membrane_regions, "region_id", active_panel.region_id)
-        if active_panel
-        else (project.membrane_regions[0] if project.membrane_regions else None)
-    )
-
-    if image_set_id is None:
-        image_set_id = (
-            (active_panel.image_set_id if active_panel else None)
-            or (active_region.image_set_id if active_region else None)
-            or (project.image_sets[0].image_set_id if project.image_sets else None)
-        )
-    if not image_set_id:
-        raise ValueError("撮影系列が見つかりません")
+    image_set_id, default_frame_id = default_reference_frame(project, image_set_id)
     image_set = _get(project.image_sets, "image_set_id", image_set_id)
-
-    if reference_frame_id is None:
-        reference_frame_id = (
-            (active_panel.display_geometry.reference_frame_id if active_panel and active_panel.display_geometry else None)
-            or (active_region.reference_frame_id if active_region else None)
-            or image_set.reference_frame_id
-        )
-        if reference_frame_id is None:
-            captures = [_get(project.captures, "capture_id", cid) for cid in image_set.capture_ids]
-            longest = max(captures, key=lambda c: (c.exposure_s or 0, c.capture_id))
-            reference_frame_id = frame_for_capture(project, longest.capture_id).frame_id
+    reference_frame_id = reference_frame_id or default_frame_id
     ref_frame = _get(project.frames, "frame_id", reference_frame_id)
     _ensure_series_transforms(project, image_set, reference_frame_id)
 

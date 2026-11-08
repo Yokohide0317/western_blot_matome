@@ -20,7 +20,9 @@ https://github.com/user-attachments/assets/382d17b3-be22-44fa-8921-54f770501dc4
 
 Claudeアプリの「Code」タブ（または Claude Code / Codex）で、次のように頼みます。
 
-> https://github.com/Yokohide0317/western_blot_matome のREADMEを読んで、ツールとSkillを導入して
+```text
+https://github.com/Yokohide0317/western_blot_matome のREADMEを読んで、ツールとSkillを導入して
+```
 
 エージェントが下の「[AIエージェントへ](#aiエージェントへ)」に沿って、ツール（`wbm`）とAI用のSkill「wblot」を入れます。コマンドの実行の許可を求められたら、内容を確かめて許可してください。
 

@@ -665,6 +665,8 @@ def test_manual_angle_buttons_and_popover_adjust_each_membrane_independently(app
         expect(slider).to_be_visible()
         page.get_by_role('button', name='角度を0度に戻す', exact=True).click()
         expect(page.locator('.pill b')).to_have_text('0°')
+        # The label updates before the save lands; wait for the file.
+        wait_for_revision(page, path, after.project_revision + 1)
         assert rotation_degrees(api._load(path), api._load(path).panels[0]) == pytest.approx(0.0, abs=0.05)
 
 

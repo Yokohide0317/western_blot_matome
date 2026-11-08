@@ -76,10 +76,6 @@ export function overlapIssues(lanes, size) {
     if (lane.excluded) continue;
     const notes = [];
     if (bandOverlapsBackground(lane, size)) notes.push('背景とバンドが重なっています');
-    for (const other of lanes) {
-      if (other.lane_id === lane.lane_id || other.excluded) continue;
-      if (boxesOverlap(lane.x, lane.y, other.x, other.y, size)) notes.push(`レーン ${other.lane_id} のバンドと重なっています`);
-    }
     if (notes.length) issues[lane.lane_id] = notes;
   }
   return issues;

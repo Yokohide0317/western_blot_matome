@@ -29,11 +29,9 @@ test('resizing keeps every centre and rejects a box that would leave the image',
   assert.equal(resizedLanes(lanes, size, {width: 0, height: 10}, image), null);
 });
 
-test('overlaps are reported for the band with its background and with other bands', () => {
+test('overlapping bands are allowed; band-background overlap is still reported', () => {
   const lanes = [lane, {...lane, lane_id: 2, x: 25, y: 12, background_y: 45}, {...lane, lane_id: 3, x: 80, background_y: 10, excluded: true}];
-  assert.deepEqual(overlapIssues(lanes, size), {
-    1: ['レーン 2 のバンドと重なっています'], 2: ['レーン 1 のバンドと重なっています'],
-  });
+  assert.deepEqual(overlapIssues(lanes, size), {});
   assert.deepEqual(Object.keys(overlapIssues([{...lane, background_y: 12}], size)), ['1']);
 });
 

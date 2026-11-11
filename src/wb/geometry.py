@@ -69,6 +69,8 @@ class Affine:
         x, y = center_xy
         angle = math.radians(degrees)
         c, s = math.cos(angle), math.sin(angle)
+        if degrees % 90 == 0:
+            c, s = ((1, 0), (0, 1), (-1, 0), (0, -1))[int(degrees // 90) % 4]
         return cls(from_frame_id, to_frame_id,
                    [[c, -s, x - c*x + s*y], [s, c, y - s*x - c*y], [0, 0, 1]])
 

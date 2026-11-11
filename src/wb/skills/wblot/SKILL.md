@@ -57,6 +57,7 @@ ChemiDocの書き出しファイル名はラボによって違うことがある
    - ラベル（抗体名等）を変える: `wbm rename <段> <名前> --project "<project>" --json`
    - 採用露光を変える: `wbm set-exposure <段> <撮影ID> --project "<project>" --json`
    - 角度・4辺切り出し範囲・出力幅を直す: `wbm adjust <段> [--rotation D] [--crop-left X0] [--crop-right X1] [--crop-top Y0] [--crop-bottom Y1] [--width PX] --project "<project>" --json`
+   - 縦向きのバンド列など、選択範囲を保って向きを変える: `wbm rotate <段> --degrees -90 --project "<project>" --json`（`-90`＝左90°、`90`＝右90°、`180`＝半回転）。画面の角度表示内の「左90°」「右90°」と同じ処理。90°回転ではレーン数を保って等間隔に戻すため、必要なら境界を再調整する。元画像は変更しない。自動提案も膜の外形だけでなくバンドの形と列の向きで縦配置を判定するが、180°の向きと試料順は利用者と確認する。
    - 手動で新しいメンブレン／セレクションを追加する: `wbm add-membrane <x0> <y0> <x1> <y1> [--rotation D] [--membrane-label M] [--label L] [--frame F] --project "<project>" --json`（画面上の一覧下にある `＋` でも追加可）
    - 座標の目盛り付きで画像全体を見る（膜の位置の読み取り・確認用）: `wbm overview [--frame F] [--grid PX] [--raw] --project "<project>" --json`（戻り値の `path` の画像を開く）
    - 段の並び順を変える: `wbm reorder <段1> <段2> ... --project "<project>" --json`（カンマ区切り `A,B,C` も可）
@@ -91,7 +92,7 @@ ChemiDocの書き出しファイル名はラボによって違うことがある
 
 変更系コマンドの `--json` は、AI Agentが巨大な `.wblot` 全体を再読み込みせずに済むよう、更新箇所の最小限のレシートを返す。
 
-- **単一パネル変更** (`set-exposure`, `adjust`, `add-membrane`, `rename`, `include`, `exclude`, `duplicate`):
+- **単一パネル変更** (`set-exposure`, `adjust`, `rotate`, `add-membrane`, `rename`, `include`, `exclude`, `duplicate`):
   `{"ok": true, "project_revision": <整数>, "panel": <更新された段の要約>}`
   （`duplicate` の場合は `"new_panel_id": "..."` も含む）
   ※ `panel` には `panel_id`, `label`, `included`, `display_order`, `lane_count`, `membrane_label`, `region_id`, `review_status`, `selected_band_row_candidate_id`, `selected_exposure_id`, `exposure_s` 等が含まれる。

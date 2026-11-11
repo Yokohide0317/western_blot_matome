@@ -20,6 +20,7 @@ WEB_DIR = Path(__file__).parent / "web"
 OPERATIONS = {
     "undo": api.undo,
     "redo": api.redo,
+    "rotate_panel": api.rotate_panel,
     "start_quantification": api.start_quantification,
     "place_quantification": api.place_quantification,
     "update_quantification": api.update_quantification,

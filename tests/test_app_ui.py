@@ -646,6 +646,37 @@ def test_ui_edits_then_exports_without_changing_review_history(app_project):
             assert saved.is_file() and saved.parent == P.output_dir(path) / 'exports'
 
 
+def test_quarter_turn_buttons_preserve_selection_and_update_preview(app_project):
+    import numpy as np
+    from test_orientation import footprint
+    path, before = applied(app_project)
+    with browser_page(path) as (page, client, url):
+        band_stage(page)
+        page.get_by_role('button', name='角度を調整', exact=True).click()
+        slider = page.get_by_role('slider', name='セレクションの角度')
+        expect(slider).to_have_attribute('min', '-180')
+        expect(slider).to_have_attribute('max', '180')
+        page.get_by_role('button', name='選択範囲を保って左に90度回転', exact=True).click()
+        turned = wait_for_revision(page, path, before.project_revision + 1)
+        np.testing.assert_allclose(footprint(turned), footprint(before), atol=1e-9)
+        assert rotation_degrees(turned, turned.panels[0]) == pytest.approx(rotation_degrees(before, before.panels[0]) - 90)
+        assert turned.panels[1] == before.panels[1]
+        page.reload()
+        band_stage(page)
+        displayed_angle = float(page.locator('.pill b').inner_text().replace('°', ''))
+        assert displayed_angle == pytest.approx(rotation_degrees(turned, turned.panels[0]), abs=.1)
+        blot = page.locator(f'.row[data-panel="{turned.panels[0].panel_id}"] img[data-capture]').first
+        expect(blot).to_be_visible()
+        page.wait_for_function('(img) => img.complete && img.naturalWidth > 0', arg=blot.element_handle())
+        size = blot.evaluate('(img) => [img.naturalWidth, img.naturalHeight]')
+        assert size[1] > size[0]
+        page.get_by_role('button', name='角度を調整', exact=True).click()
+        page.get_by_role('button', name='選択範囲を保って右に90度回転', exact=True).click()
+        restored = wait_for_revision(page, path, turned.project_revision + 1)
+        np.testing.assert_allclose(footprint(restored), footprint(before), atol=1e-9)
+        assert rotation_degrees(restored, restored.panels[0]) == pytest.approx(rotation_degrees(before, before.panels[0]))
+
+
 def test_manual_angle_buttons_and_popover_adjust_each_membrane_independently(app_project):
     path, project = applied(app_project)
     with browser_page(path) as (page, client, url):

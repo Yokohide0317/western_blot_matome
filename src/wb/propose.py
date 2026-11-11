@@ -263,10 +263,48 @@ def _band_blobs(signal, polygon, threshold=.18):
     return blobs
 
 
+def _vertical_band_row(signal, polygon):
+    """A vertical sample row needs both band axes and aligned band centers.
+
+    Membrane shape alone cannot establish sample direction. Requiring the
+    centers to follow the same axis also avoids turning horizontal lanes of
+    vertical smears or a single vertical artifact into a sample row.
+    """
+    angles, centers = [], []
+    for _, center, points in _band_blobs(signal, polygon):
+        values, vectors = np.linalg.eigh(np.cov(points.T))
+        if values[1] <= values[0] * 2:
+            continue
+        dx, dy = vectors[:, 1]
+        angle = math.degrees(math.atan2(dy, dx)) % 180
+        if 45 <= angle <= 135:
+            angles.append(angle)
+            centers.append(center)
+    if len(centers) < 2:
+        return None
+    values, vectors = np.linalg.eigh(np.cov(np.asarray(centers).T))
+    direction = float(np.median(angles))
+    dx, dy = vectors[:, 1]
+    row_angle = math.degrees(math.atan2(dy, dx)) % 180
+    difference = abs((row_angle - direction + 90) % 180 - 90)
+    if values[1] <= values[0] * 4 or difference > 15:
+        return None
+    if sum(abs(angle - direction) <= 15 for angle in angles) < .75 * len(angles):
+        return None
+    return direction, len(centers)
+
+
 def _orientation(refpoly, refimage, signal, label, warnings):
     vertical = np.ptp(refpoly[:, 1]) > 2 * np.ptp(refpoly[:, 0])
     edges = [refpoly[1] - refpoly[0], refpoly[2] - refpoly[3]]
     edge_angle = float(np.mean([math.degrees(math.atan2(v[1], v[0])) for v in edges]))
+    row = _vertical_band_row(signal, refpoly)
+    if row is not None:
+        direction, count = row
+        warnings.append(f'{label}: band direction is ambiguous by 180 degrees; verify the sample order.')
+        return -direction, 'aligned band centers and 2D component major axes', {
+            'band_direction_degrees': direction, 'aligned_component_count': count,
+            'orientation_ambiguity_degrees': 180}
     if vertical:
         angles = []
         for _, _, points in _band_blobs(signal, refpoly):

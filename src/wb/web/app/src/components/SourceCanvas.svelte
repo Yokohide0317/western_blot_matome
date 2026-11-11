@@ -20,6 +20,7 @@
   export let onaddselection;
   export let ondrag;
   export let onmarker = null;
+  export let onrotate = null;
 
   let svg, fit = stage === 'membrane' || initialDraw === 'membrane' ? 'frame' : 'membrane', vb = null, opacity = 0.5, flicker = false;
   let viewerWidth = 1, viewerHeight = 1, drag = null, boxDrag = null, pan = null, suppressClick = false;
@@ -421,8 +422,12 @@
       </span>
       {#if angleOpen && stage === 'band' && dg?.crop_rect}
         <div class="angle-pop" role="group" aria-label="角度調整">
+          <button type="button" class="mini" aria-label="選択範囲を保って左に90度回転" disabled={busy || !onrotate}
+            on:click={() => onrotate(panel.panel_id, -90)}>左90°</button>
+          <button type="button" class="mini" aria-label="選択範囲を保って右に90度回転" disabled={busy || !onrotate}
+            on:click={() => onrotate(panel.panel_id, 90)}>右90°</button>
           <button type="button" class="mini" disabled={busy} on:click={() => stepAngle(-2)}>−2°</button>
-          <input class="angle-slider" type="range" min="-25" max="25" step="0.1" aria-label="セレクションの角度"
+          <input class="angle-slider" type="range" min="-180" max="180" step="0.1" aria-label="セレクションの角度"
             value={live.angle} disabled={busy} on:input={scrubAngle} on:change={commitScrubAngle}>
           <button type="button" class="mini" disabled={busy} on:click={() => stepAngle(2)}>+2°</button>
           <button type="button" class="mini" aria-label="角度を0度に戻す" disabled={busy} on:click={() => setAngle(0)}>0°</button>
@@ -517,7 +522,7 @@
           {#each [['top', handles.top], ['bottom', handles.bottom], ['rotate', handles.rotate]] as [kind, point]}
             <circle class={`handle ${kind}`} data-handle={kind} cx={point[0]} cy={point[1]} r={8 / scale} vector-effect="non-scaling-stroke"
               role="slider" tabindex="0" aria-label={handleNames[kind]} aria-orientation={kind === 'rotate' ? 'horizontal' : 'vertical'}
-              aria-valuemin={kind === 'rotate' ? -25 : 0} aria-valuemax={kind === 'rotate' ? 25 : Math.round(refFrame?.height || 0)}
+              aria-valuemin={kind === 'rotate' ? -180 : 0} aria-valuemax={kind === 'rotate' ? 180 : Math.round(refFrame?.height || 0)}
               aria-valuenow={kind === 'rotate' ? Number(live.angle.toFixed(1)) : Math.round(live[kind])}
               aria-valuetext={kind === 'rotate' ? angleLabel : undefined}
               on:pointerdown={event => startHandle(kind, event)} on:keydown={event => keyHandle(kind, event)} on:blur={keyRelease}/>

@@ -920,6 +920,43 @@ def rows(project_dir, panel=None):
     ]
 
 
+def rotate_panel(project_dir, panel_id, degrees, expected_revision):
+    """Quarter-turn the output while keeping the same source-image footprint."""
+    import math
+    import numpy as np
+
+    if isinstance(degrees, bool) or degrees not in (-90, 90, 180):
+        raise ValueError('回転は-90、90、180度で指定してください')
+    project = _load(project_dir)
+    panel = _get(project.panels, 'panel_id', panel_id)
+    dg = panel.display_geometry
+    if not dg or not dg.crop_rect:
+        raise ValueError('先に段の範囲を設定してください')
+    record = _get(project.transforms, 'transform_id', dg.reference_to_rectified_transform_id)
+    old = Affine.from_json(record.model_dump())
+    angle = math.degrees(math.atan2(old.matrix[1, 0], old.matrix[0, 0]))
+    evidence = record.evidence if isinstance(record.evidence, dict) else {}
+    center = evidence.get('center') or evidence.get('rotation_center')
+    if center is None:
+        center = np.linalg.lstsq(np.eye(2) - old.matrix[:2, :2], old.matrix[:2, 2], rcond=None)[0].tolist()
+    turn = Affine.rotation_about(center, degrees, dg.rectified_frame_id, 'TURNED')
+    corners = turn.apply(Rect(**dg.crop_rect.model_dump()).corners())
+    minimum, maximum = corners.min(axis=0), corners.max(axis=0)
+    crop = dict(x0=float(minimum[0]), y0=float(minimum[1]), x1=float(maximum[0]), y1=float(maximum[1]))
+    # Old x positions describe a different axis after a quarter-turn. Keep the
+    # lane count, but infer equal intervals until the user adjusts them again.
+    layout = dg.lane_layout.model_dump() if degrees == 180 else {
+        'lane_count': dg.lane_layout.lane_count, 'status': 'proposed'}
+    if degrees == 180:
+        layout['centers_x'] = [float(2 * center[0] - x) for x in reversed(layout['centers_x'])]
+        layout['boundaries'] = [1 - x for x in reversed(layout['boundaries'])]
+        layout['spans'] = [(1 - end, 1 - start) for start, end in reversed(layout['spans'])]
+    project = _apply_display_geometry(project, panel_id, dg.reference_frame_id, angle + degrees,
+                                      center, crop, dg.target_width_px, layout)
+    _get(project.panels, 'panel_id', panel_id).display_geometry.marker_x = None
+    return _save(project_dir, project, expected_revision, 'rotate_panel')
+
+
 def adjust(
     project_dir,
     panel_id,

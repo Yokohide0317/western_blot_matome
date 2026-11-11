@@ -26,6 +26,7 @@ def parser():
         "propose": "自動提案",
         "set-exposure": "採用露光を変更",
         "adjust": "角度と範囲を調整",
+        "rotate": "選択範囲を保ったまま90度・180度回転",
         "rename": "段のラベルを変更",
         "reorder": "段を並べ替え",
         "include": "段を含める",
@@ -63,8 +64,10 @@ def parser():
         if name == "propose":
             command.add_argument("--apply", action="store_true")
             command.add_argument("--summary", action="store_true", help="提案の段と警告件数だけを表示")
-        if name in ("set-exposure", "adjust", "rename", "marker"):
+        if name in ("set-exposure", "adjust", "rename", "marker", "rotate"):
             command.add_argument("panel")
+        if name == 'rotate':
+            command.add_argument('--degrees', type=int, choices=(-90, 90, 180), default=90)
         if name in ("include", "exclude", "duplicate"):
             command.add_argument("panel")
         if name == "add-membrane":
@@ -254,6 +257,8 @@ def _execute(args):
         saved = api.set_selected_exposure(path, panel.panel_id, args.capture_id, revision)
     elif name == "rename":
         saved = api.rename_panel(path, panel.panel_id, args.label, revision)
+    elif name == 'rotate':
+        saved = api.rotate_panel(path, panel.panel_id, args.degrees, revision)
     elif name == "marker":
         x0, x1 = (None, None) if args.reset else _marker_x(project, panel, args)
         saved = api.set_marker_x(path, panel.panel_id, x0, x1, revision)

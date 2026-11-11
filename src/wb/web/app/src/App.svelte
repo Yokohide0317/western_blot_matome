@@ -132,6 +132,7 @@
   const setMarker = (id, range) => mutate('set_marker_x', {panel_id: id, x0: range?.x0 ?? null, x1: range?.x1 ?? null},
     range ? 'マーカーの範囲を保存しました' : 'マーカーを自動に戻しました');
   const saveGeometry = (id, geometry) => mutate('save_panel_edit', {panel_id: id, display_geometry: geometry}, '編集を保存しました');
+  const rotateSelection = (id, degrees) => mutate('rotate_panel', {panel_id: id, degrees}, '向きを変更しました');
   async function adopt(captureId) {
     if (await mutate('set_selected_exposure', {panel_id: panel.panel_id, capture_id: captureId}, '採用露光を変更しました')) preview = null;
   }
@@ -315,7 +316,7 @@
           <QuantificationCanvas group={qGroup} image={qImage} imageUrl={qGroup ? quantificationSourceUrl(qGroup) : ''} lanes={qLanes} selectedLaneId={qLaneId} loadError={qInfoError}
             busy={busy || qDraft !== null} onresize={patch => qSettings(patch, '全レーンの枠サイズを変更しました')} onselect={id => qLaneId = id} onedit={(laneId, kind, x, y) => qMoveTo(laneId, kind, x, y, null)} onnudge={qNudge} oncommit={qCommit} ondrag={qDrag}/>
         {:else}<SourceCanvas {drawRequest} {project} panel={canvasPanel} {preview} bind:mode {busy} {stage} initialDraw={manualEmpty && !panels.length ? 'membrane' : null}
-          onselect={selectPanel} onselectregion={selectRegion} onsave={saveGeometry} onmarker={setMarker}
+          onselect={selectPanel} onselectregion={selectRegion} onsave={saveGeometry} onmarker={setMarker} onrotate={rotateSelection}
           onaddmembrane={addManualMembrane} onaddselection={addPanelSelection} ondrag={value => dragging = value}/>
         {/if}</section>
       </div>

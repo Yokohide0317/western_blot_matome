@@ -9,6 +9,7 @@ from playwright.sync_api import expect
 from test_app_ui import browser_page
 from test_quantification_api import quant_project, start, configure, compute, LANES, group_of
 from test_quantification_placement import select, centers_of
+from test_quantification_workbook import multi_group_project
 
 
 def test_mouse_resize_keeps_centres_and_downloads_excel(quant_project):
@@ -48,9 +49,9 @@ def test_mouse_resize_keeps_centres_and_downloads_excel(quant_project):
             page.get_by_test_id('quant-excel').click()
         assert download.value.suggested_filename == 'quantification.xlsx'
         book = load_workbook(io.BytesIO(download.value.path().read_bytes()))
-        assert book['定量結果']['C2'].value == 14*8
-        assert book['定量結果']['B2'].value == '=1+1'
-        assert book['定量結果']['B2'].data_type == 's'
+        assert book.worksheets[0]['C2'].value == 14*8
+        assert book.worksheets[0]['B2'].value == '=1+1'
+        assert book.worksheets[0]['B2'].data_type == 's'
         page.reload()
         page.get_by_role('tab', name='3. 定量(Optional)').click()
         expect(box.locator('rect').first).to_have_attribute('width', '14')
@@ -203,3 +204,43 @@ def test_ui_starts_from_selection_and_repositions_saved_group(quant_project, tmp
         expect(page.get_by_test_id('quant-results-empty')).to_be_visible()
         assert group_of(request.get(url + '/api/project').json())['group_id'] == group['group_id']
         page.screenshot(path=str(tmp_path / 'auto-placement.png'))
+
+
+def test_one_ui_download_contains_every_group(quant_project):
+    root, client, project, _, _ = quant_project
+    multi_group_project(client, project)
+    with browser_page(root) as (page, _, _):
+        page.get_by_role('tab', name='3. 定量(Optional)').click()
+        button = page.get_by_role('button', name='Excel（全件）', exact=True)
+        expect(button).to_be_enabled()
+        with page.expect_download() as download:
+            button.click()
+        assert download.value.suggested_filename == 'quantification.xlsx'
+        book = load_workbook(io.BytesIO(download.value.path().read_bytes()))
+        assert book.sheetnames == ['A (2s)', 'TargetA (1s)', 'TargetA (1s) (2)', '解析条件']
+
+
+def test_ui_explains_uncomputed_groups_and_surfaces_stale_export_error(quant_project):
+    root, client, project, _, _ = quant_project
+    project, _ = multi_group_project(client, project)
+    project, _ = start(client, project)
+    with browser_page(root) as (page, _, _):
+        page.get_by_role('tab', name='3. 定量(Optional)').click()
+        expect(page.get_by_role('button', name='Excel（全件）', exact=True)).to_be_disabled()
+        expect(page.get_by_text('未計算の定量があります。', exact=False)).to_be_visible()
+    # Keep old results on an otherwise valid second group: all groups look
+    # calculated, but the server must reject that group's stale fingerprint.
+    stored = P.load_project(P.locate(root))
+    stored.quantification_groups.pop()
+    stored.quantification_groups[1].width_px += 2
+    P.save_project(stored, P.locate(root), stored.project_revision)
+    with browser_page(root) as (page, _, _):
+        page.get_by_role('tab', name='3. 定量(Optional)').click()
+        button = page.get_by_role('button', name='Excel（全件）', exact=True)
+        expect(button).to_be_enabled()
+        downloads = []
+        page.on('download', lambda download: downloads.append(download))
+        button.click()
+        expect(page.locator('.toast')).to_contain_text('定量を出力できません')
+        expect(button).to_be_enabled()
+        assert downloads == []

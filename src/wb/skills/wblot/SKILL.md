@@ -7,14 +7,16 @@ description: Western blot・ウェスタンブロットの図をChemiDocのZIP�
 
 このSkillは Western Blot Matome（`wbm`）のCLIを使う。プロジェクトファイル（`.wblot`）とSkill ID（`wblot`）は従来どおりの名前。
 
-## 0. 導入確認（毎回最初に）
+## 0. 導入確認とアプリ起動（毎回最初に）
 
-1. `wbm --version` を実行する。見つからなければ、macOS / Linux は `~/.local/bin/wbm --version`、Windows は `%USERPROFILE%\.local\bin\wbm.exe --version` を試す。アプリから実行するシェルでは `~/.local/bin` がPATHに無いことがあるので、見つかった絶対パスを以後も使う。
-2. どれも無ければ、利用者に「Western Blot Matomeを導入します」と伝えて了承を得てから、次の1行を実行する（Xcode Command Line Tools・Python・git・Node.jsは不要。uvが無ければ自動で入る）。
+1. `wbm --version` を実行する。見つからなければ、macOS / Linux は `~/.local/bin/wbm --version`、Windows は `%USERPROFILE%\.local\bin\wbm.exe --version` を試し、見つかった絶対パスを以後使う。
+2. 未導入なら、導入するもの（WBM本体・起動アプリ・別途導入するSkill）と保存先を短く伝え、OSに合うインストーラーを実行する。利用者から導入を依頼されている場合は、同じ承認を繰り返し求めない。
    - macOS / Linux: `curl -LsSf https://github.com/Yokohide0317/western_blot_matome/releases/latest/download/install.sh | sh`
    - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://github.com/Yokohide0317/western_blot_matome/releases/latest/download/install.ps1 | iex"`
-3. 導入済みなら `wbm update --check --json` で新しいバージョンを確認する（GitHubに問い合わせる。利用者が設定で確認を止めていれば `check` が false で、何もしない）。`available` が true なら「新しいバージョン v<latest> があります（現在 v<current>）」と伝え、了承を得てから `wbm update --json` を実行する。更新は裏で進み、サーバーは止まって更新後に起動し直す。1分ほど待ってから `wbm --version` で新しい番号になったことを確かめる（まだ古ければもう少し待つ。記録は戻り値の `log`）。`can_apply` が false なら `reason` を伝えて判断を任せる（uvで入れた通常の導入なら、上の1行＝戻り値の `command` を実行し直しても更新できる）。
-4. `wbm install-skill` はこのSkillを `~/.claude/skills`・`~/.codex/skills`・`~/.agents/skills` に入れる（`--claude`／`--codex`／`--agents` で個別指定）。
+3. アプリを配置する。インストーラーで作成済みならその場所を使い、なければ `wbm install-app --json` を実行する。macOSは `/Applications/WBM.app`（書き込めなければ `~/Applications/WBM.app`）、Windowsは `%LOCALAPPDATA%\Programs\WBM\WBM.exe`。ダウンロード先や一時フォルダのアプリをそのまま常用しない。手元に.appだけがある場合もApplicationsへ移動する。ただし別アプリを上書きしない。管理者権限を追加しない。
+4. Skillは本体と別に `wbm install-skill` で導入する。`~/.claude/skills/wblot`・`~/.codex/skills/wblot`・`~/.agents/skills/wblot` に入る（`--claude`／`--codex`／`--agents` で個別指定）。インストーラーや自動更新だけではSkillは導入・更新されない。
+5. 起動は **`wbm app --no-browser --json`** を使い、戻り値の `app_pid`・`pid`・`url` でアプリとサーバーの起動を確認する。すでに起動していれば同じアプリ・同じサーバーを再利用する。プロジェクトを開く `wbm open` も同じアプリ経由になる。Agentが別のPython/uvicornサーバーを立てたり、別の `WBM_HOME` を作って二重起動したりしない。起動に失敗したらエラーを伝えて原因を確認し、別サーバーで回避しない。LinuxやGUIのないCIではCLIサーバーを使うが、macOS/Windowsの通常作業で `WBM_HEADLESS=1` を設定しない。
+6. 導入済みなら `wbm update --check --json` で更新を確認する。更新が必要なら利用者に新旧バージョンを伝え、更新の依頼・許可があれば `wbm update --json` を実行する。更新後は `wbm --version` を確認し、必要に応じてアプリを終了して `wbm install-app --json`、Skillを `wbm install-skill` で更新する。アプリが管理するサーバーは同じアプリの管理下で再起動する。
 
 Claudeアプリの「Code」タブでは、データ（ZIPやフォルダ）がセッションのフォルダ外にあると読み書きの許可を求められる。必要なら最初にデータのフォルダをセッションに追加するよう利用者に頼む。
 
@@ -48,7 +50,7 @@ ChemiDocの書き出しファイル名はラボによって違うことがある
 2. **状態確認**:
    `wbm status --project "<project>" --json` でSelection一覧、採用露光、警告を読み、要点を利用者に伝える。
 3. **ブラウザ確認の依頼**:
-   `wbm open "<project>" --no-browser --json` を実行し、戻り値の `url` をアプリ内のブラウザパネルで開く（ブラウザパネルが無ければ `--no-browser` を付けずに実行し、既定のブラウザで開く）。そのうえで「ブラウザを開きました（<url>）。1. メンブレン選択 → 2. バンド選択 の順に各段の位置・露光・レーン配置をご確認ください」と、戻り値の `url` をそのまま書いて依頼する。127.0.0.1 の共有サーバー（既定ポート8765）が1つだけ起動し、戻り値の `url`（`http://127.0.0.1:<port>/p/<ID>/`）がそのプロジェクトの画面になる。別のプロジェクトを開いても同じサーバーに別IDで追加される。サーバーのトップ（`hub_url`）と `wbm recent --json` で最近開いたプロジェクトを確認できる。利用者から渡されたファイルは、Web UIにアップロードせず、そのパスで `wbm open` する（結果がデータの隣に保存されるため）。
+   `wbm app --no-browser --json` でアプリを起動・再利用してから、`wbm open "<project>" --no-browser --json` を実行し、戻り値の `url` をアプリ内のブラウザパネルで開く（ブラウザパネルが無ければ `--no-browser` を付けずに実行し、既定のブラウザで開く）。そのうえで「ブラウザを開きました（<url>）。1. メンブレン選択 → 2. バンド選択 の順に各段の位置・露光・レーン配置をご確認ください」と、戻り値の `url` をそのまま書いて依頼する。127.0.0.1 の共有サーバー（既定ポート8765）が1つだけ起動し、戻り値の `url`（`http://127.0.0.1:<port>/p/<ID>/`）がそのプロジェクトの画面になる。別のプロジェクトを開いても同じサーバーに別IDで追加される。サーバーのトップ（`hub_url`）と `wbm recent --json` で最近開いたプロジェクトを確認できる。利用者から渡されたファイルは、Web UIにアップロードせず、そのパスで `wbm open` する（結果がデータの隣に保存されるため）。
 4. **利用者の指示をCLIで反映**:
    Selectionの手動追加は「2. バンド選択」の＋からドラッグする。行の複製アイコンは範囲・露光をそのまま複製し、×は削除する。段の候補を選ぶ機能はない。メンブレンのON/OFFはSelectionのチェックと独立している。
    利用者の指示（段の追加・変更、角度、ラベル名、露光、並び順、除外、レーン数・試料名など）を以下のコマンドで反映する。画面側は変更を自動で検知して即座に再描画する。
@@ -65,14 +67,14 @@ ChemiDocの書き出しファイル名はラボによって違うことがある
    - 定量を始める: `wbm quantify start <段> [--capture <撮影ID>] --project "<project>" --json`。バンド選択の範囲・レーン境界・回転補正から、raw16上に全レーン同じ大きさのバンド枠と近くの背景枠を仮配置する。戻り値 `group.group_id` を以後の操作に使う。`group.placement_note` が寸法からの推定や仮の等間隔配置を示す場合は、その旨を伝えて画像上で合わせる。raw16がない場合は定量できない。
    - 定量の一覧・枠・結果を見る: `wbm quantify show [<group_id>] --project "<project>" --json`。バンド選択を変更した後の再配置は `wbm quantify place <group_id> --project "<project>" --json`（現在の枠と計算結果を置き換える）。
    - 定量枠や設定を直す: `wbm quantify update <group_id> --settings <JSONファイル> --project "<project>" --json`。JSONには変更する `width_px`・`height_px`、`signal_polarity`（`high` / `low`）、`saturation_value`（整数 / `null`）、`lanes` を指定する。`lanes` は `show` の全レーン一覧を使い、raw16座標の `x`・`y`・`background_x`・`background_y`・`excluded` を編集する。サイズは全枠の中心を保って2px刻みで変える。
-   - 定量を計算・出力する: `wbm quantify compute <group_id> --project "<project>" --json`、`wbm quantify export <group_id> --format excel --project "<project>" --json`（CSVは `--format csv`）。開始・再配置では計算しない。枠と背景を合わせてから計算する。出力先は `wblot_output/exports/` の新しいファイルで、戻り値 `path` に入る。WebUIも同じ保存内容を使う。
+   - 定量を計算・出力する: `wbm quantify compute <group_id> --project "<project>" --json`、`wbm quantify export <group_id> --format excel --project "<project>" --json`（CSVは `--format csv`）。開始・再配置では計算しない。枠と背景を合わせてから計算する。出力先は `wblot_output/exports/` の新しいファイルで、戻り値 `path` に入る。WebUIも同じ保存内容を使う。 全件の一括出力は `wbm quantify export --all --project "<project>" --json`。各段・定量グループを別シートにした1つのExcelになり、全グループの計算が最新であることが必要。WebUIの「Excel（全件）」も同じ出力。
 5. **ファイル出力**:
    下書き・確定の区別や承認操作はない。現在の保存内容をそのまま出力する。Colorimetricマーカーが利用可能なら、Selectionと同じ高さで取得して表示・出力する。
    - `wbm export pptx --project "<project>" --json`（PNGなら `wbm export png ...`）
    - PPTXの2枚目には、切り出し前の全体を発光とマーカーで重ねたMerge画像が入る。露光は、図に含めた全部の段でバンドがはっきり見える最短のものを自動で選ぶ（一部のバンドが少し赤く＝飽和してもよい）。省くときは `--no-merge`。
    - PPTXのファイル名は `<root>_<タイムスタンプ>.pptx` の一意名で、既存出力は上書きされない。PPTXではブロット右側に、登録Colorimetricマーカーが画面・PNGと同じ範囲・バンドと同じ高さの1枚の画像として入る（Colorimetric画像の外にはみ出す場合は入れず、画素は捏造しない）。
 6. **サーバー停止**:
-   作業完了後に止めたい場合は `wbm stop --json`（開いている全プロジェクトの画面が閉じる）。止めなくても、2時間アクセスがなければ自動で停止する。
+   利用者が終了を求めた場合だけWBMアプリを終了する（macOSはWBMの終了／⌘Q、WindowsはWBMウィンドウの終了）。全プロジェクトのサーバーも停止する。Agentは作業の区切りで勝手に停止しない。アプリが開いている間は、ブラウザを閉じてもサーバーを維持する。`wbm stop --json` は明示的な停止・トラブル対応用。
 
 ## 注意事項とルール
 

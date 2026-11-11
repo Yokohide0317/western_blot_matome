@@ -35,8 +35,8 @@ def _state_path() -> Path:
     return P.app_home() / "server.json"
 
 
-def _write_state(state):
-    path = _state_path()
+def _write_state(state, path=None):
+    path = _state_path() if path is None else Path(path)
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".server-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as out:
@@ -48,6 +48,31 @@ def _write_state(state):
 
 def _lock():
     return file_lock(P.app_home() / "server.lock")
+
+
+def _desktop_path():
+    return P.app_home() / 'desktop-session.json'
+
+
+def desktop_owner():
+    try:
+        owner = json.loads(_desktop_path().read_text(encoding='utf-8'))
+        if not isinstance(owner['owner_pid'], int) or owner['owner_pid'] <= 1 or not isinstance(owner['session'], str):
+            return None
+        return owner
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _claim_desktop(state, desktop):
+    _write_state({**desktop, 'server_token': state['token']}, _desktop_path())
+
+
+def active_desktop_owner():
+    owner, state = desktop_owner(), _read_state()
+    if owner and state and owner.get('server_token') == state.get('token') and _alive(owner['owner_pid']) and _is_ours(state):
+        return owner
+    return None
 
 
 def _alive(pid: int) -> bool:
@@ -130,11 +155,20 @@ def _spawn(listener, log, env):
                             start_new_session=True, pass_fds=(listener.fileno(),))
 
 
-def ensure_server():
+def ensure_server(desktop=None):
     """Start the hub unless it already runs; return its state (pid, port, url, started_at)."""
     with _lock():
+        if desktop is not None:
+            pid, session = desktop.get('owner_pid'), desktop.get('session')
+            if not isinstance(pid, int) or pid <= 1 or not _alive(pid) or not isinstance(session, str) or len(session) != 36:
+                raise ValueError('WBMアプリが終了しているためサーバーを起動しません')
+            previous = desktop_owner()
+            if previous and previous['session'] != session and _alive(previous['owner_pid']):
+                raise ValueError('WBMアプリはすでに起動しています')
         state = _read_state()
         if state and _is_ours(state):
+            if desktop is not None:
+                _claim_desktop(state, desktop)
             return state
         _state_path().unlink(missing_ok=True)
         log_path = P.app_home() / "server.log"
@@ -167,6 +201,8 @@ def ensure_server():
             process.wait(timeout=5)
             raise ValueError("サーバーの起動確認が時間切れになりました")
         _write_state(state)
+        if desktop is not None:
+            _claim_desktop(state, desktop)
         return state
 
 
@@ -178,17 +214,27 @@ def open_project(project_dir, no_browser=False):
     if P.verify_sources(P.load_project(project_file), root):
         raise ValueError("元画像が変更されたか見つかりません。確認してから開いてください")
     entry = hub.register(project_file)
-    state = ensure_server()
+    from wb.desktop import start_app
+    state = start_app(no_browser=True)
     url = f"{state['url']}p/{entry['id']}/"
     if not no_browser:
         webbrowser.open(url)
     return {**state, "hub_url": state["url"], "url": url, "project_id": entry["id"], "project_path": entry["path"]}
 
 
-def stop_server():
+def stop_server(desktop_session=None, expected_token=None):
     """Stop the hub, and with it every open project page."""
     with _lock():
         state = _read_state()
+        if expected_token is not None and state and state.get('token') != expected_token:
+            return {'stopped': False, 'message': 'サーバーは別の起動に切り替わっています'}
+        if desktop_session is not None:
+            owner = desktop_owner()
+            if not owner or owner['session'] != desktop_session:
+                return {'stopped': False, 'message': 'このアプリのサーバーは停止しています'}
+            if state and owner.get('server_token') != state.get('token'):
+                _desktop_path().unlink(missing_ok=True)
+                return {'stopped': False, 'message': 'サーバーは別の起動に切り替わっています'}
         if state and _is_ours(state):
             try:  # Ask politely first; works the same on every OS.
                 urlopen(Request(f"http://127.0.0.1:{state['port']}/api/hub/shutdown", data=b"{}", method="POST"),
@@ -209,6 +255,7 @@ def stop_server():
                 if _is_ours(state):
                     raise ValueError("サーバーを停止できませんでした")
         _state_path().unlink(missing_ok=True)
+        _desktop_path().unlink(missing_ok=True)
     return {"stopped": bool(state), "message": "サーバーを停止しました" if state else "サーバーは停止しています"}
 
 
@@ -224,7 +271,12 @@ def _serve(fd=None, port=None):
 
     def watch():
         while not server.should_exit:
-            time.sleep(min(30.0, max(idle / 4, 0.5)))
+            time.sleep(min(2.0, max(idle / 4, 0.2)))
+            owner = desktop_owner()
+            if owner and owner.get('server_token') == os.environ.get('WBM_HUB_TOKEN'):
+                if not _alive(owner['owner_pid']):
+                    server.should_exit = True
+                continue
             if time.monotonic() - hub.last_request > idle:
                 server.should_exit = True
 

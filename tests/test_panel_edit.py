@@ -88,8 +88,10 @@ def test_same_result_as_the_separate_operations(small_project, tmp_path_factory)
     q = api.add_annotation(other, {**data["annotations"][0], "panel_id": "PANEL_K"}, q.project_revision)
     q = api.set_selected_exposure(other, "PANEL_K", "C2", q.project_revision)
 
-    strip = {"project_revision", "history"}
+    strip = {"project_revision", "history", "edit_history"}
     assert combined.model_dump(exclude=strip) == q.model_dump(exclude=strip)
+    assert len(combined.edit_history.undo) == 1
+    assert len(q.edit_history.undo) == 4
     assert q.project_revision == copy.project_revision + 4  # the old UI needed four revisions
 
 

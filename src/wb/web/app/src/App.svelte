@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { request, isIncluded, quantificationSourceUrl, quantificationCsvUrl, quantificationExcelUrl, quantificationInfoPath } from './lib/api.js';
+  import { ApiError, request, isIncluded, quantificationSourceUrl, quantificationCsvUrl, quantificationExcelAllUrl, quantificationInfoPath } from './lib/api.js';
   import { sameLanes, moveRoi, setRoi, updateLane } from './lib/quantification.js';
   import TopBar from './components/TopBar.svelte';
   import FigurePane from './components/FigurePane.svelte';
@@ -12,6 +12,7 @@
   let project = null, selectedPanelId = '', selectedRegionId = '', preview = null, mode = 'lum', manualEmpty = false;
   let busy = false, dragging = false, polling = false, toast = null, toastTimer, queue = Promise.resolve();
   let stage = 'membrane', drawRequest = null;
+  let editHistory = {can_undo: false, can_redo: false};
   function addMembrane() { manualEmpty = true; drawRequest = {kind: 'membrane', token: Date.now()}; }
   const editing = new Set();
   $: panels = [...(project?.panels || [])].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
@@ -36,6 +37,8 @@
   async function load() {
     const next = await request('project');
     project = next;
+    const history = await request('edit_history');
+    editHistory = history.project_revision === next.project_revision ? history : {can_undo: false, can_redo: false};
     if (!selectedRegionId) {
       const regions = [...next.membrane_regions].sort((a,b) => a.user_label.localeCompare(b.user_label, undefined, {numeric:true}));
       selectedRegionId = regions.find(r => r.included)?.region_id || regions[0]?.region_id || '';
@@ -60,6 +63,21 @@
     return run;
   }
   const mutate = (operation, payload, message) => act(() => request(operation, {...payload, expected_revision: project.project_revision}), message);
+
+  $: historyBusy = busy || dragging || qDraft !== null;
+  async function moveHistory(direction) {
+    if (historyBusy || !editHistory[`can_${direction}`]) return;
+    if (await mutate(direction, {}, direction === 'undo' ? '元に戻しました' : 'やり直しました')) preview = null;
+  }
+  function historyKey(event) {
+    if (event.defaultPrevented || event.altKey || !(event.ctrlKey || event.metaKey)
+      || event.target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    const key = event.key.toLowerCase();
+    const direction = key === 'z' ? (event.shiftKey ? 'redo' : 'undo') : key === 'y' && event.ctrlKey ? 'redo' : null;
+    if (!direction) return;
+    event.preventDefault();
+    if (!event.repeat) moveHistory(direction);
+  }
 
   function selectPanel(id) {
     const target = panels.find(p => p.panel_id === id);
@@ -173,6 +191,23 @@
   }
   const qSettings = (patch, message) => mutate('update_quantification', {group_id: qGroup.group_id, ...patch}, message);
   const qCompute = () => mutate('compute_quantification', {group_id: qGroup.group_id}, '計算しました');
+  async function downloadQuantificationExcel() {
+    if (busy || dragging || qDraft !== null) return;
+    busy = true;
+    try {
+      const response = await fetch(quantificationExcelAllUrl);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new ApiError(response.status, typeof data.detail === 'string' ? data.detail : 'Excelを出力できませんでした');
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url; link.download = 'quantification.xlsx';
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { fail(e); }
+    finally { busy = false; }
+  }
   // Edits show at once; one save follows when the pointer is released or the keys pause.
   function qEdit(change, when) {
     if (!qGroup || !qImage) return;
@@ -217,10 +252,12 @@
   });
 </script>
 
+<svelte:window on:keydown={historyKey}/>
 <svelte:head><title>Western Blot Matome (WBM)</title></svelte:head>
 {#if project}
   <div class="workbench" aria-busy={busy}>
-    <TopBar {project} {busy} onexport={write}/>
+    <TopBar {project} {busy} {historyBusy} canUndo={editHistory.can_undo} canRedo={editHistory.can_redo}
+      onundo={() => moveHistory('undo')} onredo={() => moveHistory('redo')} onexport={write}/>
     {#if membranes.length || manualEmpty || project.captures.some(c => c.modality === 'colorimetric')}
       <div class="workspace" class:quant-workspace={stage === 'quantification'}>
         <section aria-label="図">
@@ -268,7 +305,7 @@
               onadd={addRow} onsetincluded={setIncluded} ondelete={deleteRow} onreorder={reorder} onlanes={setLanes} onsetnames={setNames} onlaneedges={saveLaneBoundaries} onediting={setEditing}/>
           {:else}
             <QuantificationPane {project} panels={qPanels} {busy} pending={qDraft !== null || dragging} bind:panelId={qPanelId} bind:groupId={qGroupId} bind:selectedLaneId={qLaneId}
-              group={qGroup} lanes={qLanes} info={qInfo} infoError={qInfoError} csvUrl={qGroup ? quantificationCsvUrl(qGroup.group_id) : ''} excelUrl={qGroup ? quantificationExcelUrl(qGroup.group_id) : ''}
+              group={qGroup} lanes={qLanes} info={qInfo} infoError={qInfoError} csvUrl={qGroup ? quantificationCsvUrl(qGroup.group_id) : ''} onexcel={downloadQuantificationExcel}
               onstart={qStart} onsettings={qSettings} onlane={(laneId, change, immediate) => qEdit(lanes => updateLane(lanes, laneId, change), immediate ? 'now' : 'soon')}
               oncompute={qCompute} onplace={() => mutate('place_quantification', {group_id: qGroup.group_id}, 'バンド選択から枠を配置しました')}/>
           {/if}

@@ -217,7 +217,7 @@ def status(force: bool = False) -> dict:
     }
 
 
-def posix_script(uv: str, wbm: str, version: str, wait_pids, restart_hub: bool) -> str:
+def posix_script(uv: str, wbm: str, version: str, wait_pids, restart_hub: bool, desktop=None) -> str:
     q = shlex.quote
     steps = [
         f"for pid in {' '.join(str(int(p)) for p in wait_pids)}; do",
@@ -227,15 +227,15 @@ def posix_script(uv: str, wbm: str, version: str, wait_pids, restart_hub: bool) 
         "sleep 1",
         f"echo \"[$(date)] installing wbm {version}\"",
         f"{q(uv)} tool install --force --python 3.12 {q(wheel_url(version))} || exit 1",
-        f"{q(wbm)} install-skill",
     ]
     if restart_hub:
-        steps.append(f"{q(wbm)} start")
+        options = f" --desktop-session {q(desktop['session'])} --owner-pid {int(desktop['owner_pid'])}" if desktop else ''
+        steps.append(f"{q(wbm)} start{options}")
     steps.append("echo \"[$(date)] done\"")
     return "\n".join(steps)
 
 
-def windows_script(uv: str, wbm: str, version: str, wait_pids, restart_hub: bool) -> str:
+def windows_script(uv: str, wbm: str, version: str, wait_pids, restart_hub: bool, desktop=None) -> str:
     q = lambda text: "'" + str(text).replace("'", "''") + "'"
     ids = ", ".join(str(int(p)) for p in wait_pids)
     steps = [
@@ -245,15 +245,15 @@ def windows_script(uv: str, wbm: str, version: str, wait_pids, restart_hub: bool
         f"Write-Output \"[$(Get-Date)] installing wbm {version}\"",
         f"& {q(uv)} tool install --force --python 3.12 {q(wheel_url(version))}",
         "if ($LASTEXITCODE) { exit $LASTEXITCODE }",
-        f"& {q(wbm)} install-skill",
     ]
     if restart_hub:
-        steps.append(f"& {q(wbm)} start")
+        options = f" --desktop-session {q(desktop['session'])} --owner-pid {int(desktop['owner_pid'])}" if desktop else ''
+        steps.append(f"& {q(wbm)} start{options}")
     steps.append("Write-Output \"[$(Get-Date)] done\"")
     return "; ".join(steps)
 
 
-def apply(wait_pids, restart_hub: bool, version: str | None = None) -> dict:
+def apply(wait_pids, restart_hub: bool, version: str | None = None, desktop=None) -> dict:
     """Start the detached updater and return at once; it installs ``version`` (default: the latest)."""
     now = current()
     version = version or latest()
@@ -272,17 +272,19 @@ def apply(wait_pids, restart_hub: bool, version: str | None = None) -> dict:
         stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
         out.write(f"\n[{stamp}] update {now} -> {version}, waiting for {pids}\n")
     # Run from the home folder: a working directory inside the tool environment would be in use.
+    from wb import server
+    desktop = desktop or server.active_desktop_owner()
     with log.open("ab") as out:
         if WINDOWS:
             # Not DETACHED_PROCESS: uv and wbm would then each open a visible console window.
             # A hidden console of its own (CREATE_NO_WINDOW) outlives the hub just the same.
             flags = _NEW_PROCESS_GROUP | _NO_WINDOW
             command = ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-                       windows_script(uv, wbm, version, pids, restart_hub)]
+                       windows_script(uv, wbm, version, pids, restart_hub, desktop)]
             subprocess.Popen(command, cwd=Path.home(), stdin=subprocess.DEVNULL, stdout=out, stderr=out,
                              creationflags=flags)
         else:
-            command = ["/bin/sh", "-c", posix_script(uv, wbm, version, pids, restart_hub)]
+            command = ["/bin/sh", "-c", posix_script(uv, wbm, version, pids, restart_hub, desktop)]
             subprocess.Popen(command, cwd=Path.home(), stdin=subprocess.DEVNULL, stdout=out, stderr=out,
                              start_new_session=True)
     return {"started": True, "current": now, "version": version, "log": str(log),
@@ -299,10 +301,12 @@ def update_now() -> dict:
     if not info["can_apply"]:
         raise ValueError(f"{info['reason']}（新しいバージョン v{info['latest']}）")
     state = server._read_state()
+    desktop = server.active_desktop_owner()
     hub_pid = state["pid"] if state and server._is_ours(state) else None
     if hub_pid:
         server.stop_server()
-    result = apply(wait_pids=[hub_pid, os.getpid()], restart_hub=bool(hub_pid), version=info["latest"])
+    options = {'desktop': desktop} if desktop else {}
+    result = apply(wait_pids=[hub_pid, os.getpid()], restart_hub=bool(hub_pid), version=info["latest"], **options)
     if hub_pid:
         result["message"] += "。サーバーは更新後に起動し直します（開いていた画面は再読み込みしてください）"
     return result

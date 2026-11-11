@@ -184,7 +184,7 @@ def test_posix_updater_waits_for_the_processes_then_installs(monkeypatch, instal
     assert "for pid in 111 222; do" in script and 'kill -0 "$pid"' in script
     assert script.index("kill -0") < script.index(WHEEL)
     assert f"'/opt/my tools/uv' tool install --force --python 3.12 {WHEEL}" in script
-    assert "/home/someone/.local/bin/wbm install-skill" in script
+    assert "install-skill" not in script
     assert script.rstrip().splitlines()[-2] == "/home/someone/.local/bin/wbm start"
     assert options["start_new_session"] is True and options["stdin"] == subprocess.DEVNULL
     assert "waiting for [111, 222]" in (P.app_home() / "update.log").read_text(encoding="utf-8")
@@ -201,7 +201,7 @@ def test_windows_updater_waits_for_the_processes_then_installs(monkeypatch, inst
     assert "foreach ($id in @(111, 222)) { Wait-Process -Id $id" in script
     assert script.index("Wait-Process") < script.index(WHEEL)
     assert f"& 'C:\\Users\\O''Brien\\.local\\bin\\uv.exe' tool install --force --python 3.12 '{WHEEL}'" in script
-    assert "wbm.exe' install-skill" in script and " start" not in script
+    assert "install-skill" not in script and " start" not in script
     assert options["creationflags"] & update._NO_WINDOW and options["creationflags"] & update._NEW_PROCESS_GROUP
     assert "kill -0" not in script
 

@@ -21,7 +21,7 @@ Pythonパッケージは `src/wb/` 配下に配置する。依存関係は `pypr
 | `wb/export.py` | `python-pptx` および Pillow によるファイル書き出し。ブロット画像・マーカー画像と編集可能なテキスト・表を組み合わせたPPTXおよび確認用PNGを出力 | `python-pptx`, `PIL`, `layout`, `rendering` |
 | `wb/readiness.py` | 確定版出力可否判定（`output_readiness`）と、ブロッキング理由の日本語対応表（`REASON_TEXT`） | `model` |
 | `wb/api.py` | CLI・Web画面・Skillが共有する中核操作API。プロジェクト読み書き、楽観的排他制御、段・手動メンブレン操作、確定時のColorimetricマーカー自動抽出・確定処理 | `model`, `project`, `geometry`, `rendering`, `layout`, `export`, `readiness` |
-| `wb/server.py` + `wb/app.py` | 127.0.0.1 のみでリッスンするバックグラウンドFastAPIサーバー。起動中PIDとポートを `wblot_output/server.json` で管理 | `fastapi`, `uvicorn`, `api` |
+| `wb/server.py` + `wb/app.py` | 127.0.0.1 のみでリッスンするバックグラウンドFastAPIサーバー。起動中PIDとポートを `app_home()/server.json` で管理 | `fastapi`, `uvicorn`, `api` |
 | `wb/web/app/` | Svelte + Vite によるシングルページGUI。ビルド済み資産（`dist/`）をPythonパッケージ内に同梱し、Node.js環境なしで動作 | なし（静的配信） |
 | `wb/cli.py` | コマンドラインインターフェース（`wbm`）。全操作のCLI提供と、AI Agent向けの簡潔な `--json` レシート出力 | `api`, `project` |
 | `wb/skills/wblot/SKILL.md` | AI Agent（Claude Code / Codex）用Skillファイル。`skills/wblot/SKILL.md` とバイト単位で完全一致を維持 | なし |
@@ -203,7 +203,9 @@ FastAPIサーバー（127.0.0.1）が提供するエンドポイント一覧。�
 | コマンド | 引数・オプション | 概要 |
 | --- | --- | --- |
 | `wbm init` | `<ZIPまたは画像フォルダ>` | `.wblot` を作成して初期化 |
-| `wbm open` | `[<パス>] [--no-browser]` | バックグラウンドサーバーを起動し、既定ブラウザでワークベンチを開く |
+| `wbm open` | `[<パス>] [--no-browser]` | macOS/WindowsではWBMアプリを起動・再利用し、共通サーバーのワークベンチを開く |
+| `wbm app` | `[--no-browser] [--json]` | Applications/Programsのアプリ経由で共通サーバーを起動・再利用し、アプリPID・サーバーPID・URLを返す |
+| `wbm install-app` | `[--destination <パス>]` | macOSのWBM.app / WindowsのWBM.exeを作成。Skillは別のinstall-skillで導入 |
 | `wbm stop` | なし | 起動中のバックグラウンドサーバーを停止 |
 | `wbm status` | なし | 段一覧、採用露光、未確定項目、確定出力可否を表示 |
 | `wbm propose` | `[--apply] [--summary]` | 自動提案を計算。`--apply` で反映、`--summary` で要約表示 |
@@ -293,10 +295,10 @@ AI Agentは以下の標準手順に従って人間と協調しながら作業を
 2. **状態確認とユーザーへの報告**:
    `wbm status --project "<project>" --json` で段構成・採用露光・未確定項目を取得し、要点を簡潔にユーザーに報告。
 3. **ブラウザ確認の依頼**:
-   `wbm open "<project>" --json` でバックグラウンドサーバーを起動し、ブラウザで直接確認するようユーザーに依頼。
+   `wbm app --no-browser --json` でアプリを起動・再利用し、`wbm open "<project>" --json` で同じサーバーの画面を開き、ブラウザで直接確認するようユーザーに依頼。
 4. **対話的な修正の反映**:
    ユーザーからのフィードバック（段の変更、手動メンブレン／セレクション追加、角度微調整、露光切り替え、ラベル名指定、並べ替え、除外、レーン数設定等）を CLI コマンド（`select-row`, `add-membrane`, `adjust`, `rename`, `set-exposure`, `reorder`, `include`/`exclude`, `duplicate`, `lanes`）で迅速に反映。画面側は2秒ごとに更新を自動検知して即座に再描画する。
 5. **目視承認の実施**:
    ユーザーが明示的に認めた場合に限り、`wbm approve <段> --evidence "..."` または `wbm approve --all --evidence "..."`、および `wbm confirm-alignment` を実行。推測による確定は行わない。
 6. **ファイル出力と完了**:
-   `wbm export pptx --project "<project>" --json`（確定版は `--final`）を実行して出力ファイルパスをユーザーに通知。作業完了後は `wbm stop --project "<project>" --json` でサーバーを停止。
+   `wbm export pptx --project "<project>" --json`（確定版は `--final`）を実行して出力ファイルパスをユーザーに通知。作業完了だけでは停止せず、利用者が終了を求めた場合にWBMアプリを終了する。アプリの終了で共通サーバーも停止する。

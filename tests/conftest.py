@@ -14,6 +14,8 @@ def isolated_user_dirs(tmp_path_factory, monkeypatch):
     base = tmp_path_factory.mktemp("user")
     monkeypatch.setenv("WBM_HOME", str(base / "home"))
     monkeypatch.setenv("WBM_CACHE", str(base / "cache"))
+    monkeypatch.setenv("WBM_APPLICATIONS", str(base / 'applications'))
+    monkeypatch.setenv("WBM_HEADLESS", '1')
 
 
 @pytest.fixture(scope="session")

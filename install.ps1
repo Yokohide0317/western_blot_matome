@@ -32,8 +32,9 @@ Write-Host "wbm $Version をインストールしています…"
 & $uv tool install --force --python 3.12 $Wheel
 if ($LASTEXITCODE) { throw 'インストールに失敗しました' }
 $wbm = Join-Path (& $uv tool dir --bin) 'wbm.exe'
-& $wbm install-skill
+& $wbm install-app
+if ($LASTEXITCODE) { Write-Host 'WBMアプリを終了してから、wbm install-app で作成できます。' }
 & $wbm --version
 Write-Host ''
 Write-Host "インストールしました: $wbm"
-Write-Host 'Claude Code / Codex に Skill「wblot」を入れました。ChemiDocのZIPやフォルダを渡して「まとめて」と頼んでください。'
+Write-Host 'AIと使う場合は、別途 wbm install-skill を実行してください。'

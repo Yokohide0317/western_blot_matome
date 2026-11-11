@@ -234,7 +234,7 @@ class Hub:
         path = scope["path"]
         if path == "/api/hub":
             body = json.dumps({"app": HUB_NAME, "pid": os.getpid(), "token": os.environ.get("WBM_HUB_TOKEN"),
-                               "version": __version__})
+                               "version": __version__, "capabilities": ['desktop_lifetime']})
             return await _send_text(send, 200, body, "application/json")
         if path == "/api/hub/update" and scope["method"] == "GET":
             from wb import update

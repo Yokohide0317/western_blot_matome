@@ -436,11 +436,17 @@ class QuantificationGroup(_Open):
         return self
 
 
+class EditHistory(_Closed):
+    undo: list[Annotated[str, Field(pattern=r'^[0-9a-f]{64}$')]] = Field(default_factory=list, max_length=50)
+    redo: list[Annotated[str, Field(pattern=r'^[0-9a-f]{64}$')]] = Field(default_factory=list, max_length=50)
+
+
 class Project(_Open):
     schema_version: Literal["1.0"] = "1.0"
     project_id: str
     quantification_groups: list[QuantificationGroup] = Field(default_factory=list)
     project_revision: int = Field(default=1, ge=1)
+    edit_history: EditHistory = Field(default_factory=EditHistory)
     status: str | None = None
     figure_scale_mode: Literal["equal_lane_width"] = "equal_lane_width"
     created_date: str | None = None

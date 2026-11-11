@@ -23,6 +23,14 @@ def _save(project_dir, project, expected_revision, operation, summary=""):
     return P.save_project(project, P.locate(project_dir, create=True), expected_revision, operation, summary)
 
 
+def undo(project_dir, expected_revision):
+    return _save(project_dir, _load(project_dir), expected_revision, 'undo')
+
+
+def redo(project_dir, expected_revision):
+    return _save(project_dir, _load(project_dir), expected_revision, 'redo')
+
+
 def _get(items, key, value):
     item = next((x for x in items if getattr(x, key) == value), None)
     if item is None:

@@ -3,6 +3,8 @@
   const paths = {
     up: 'M8 13V3 M3 8l5-5 5 5',
     down: 'M8 3v10 M3 8l5 5 5-5',
+    undo: 'M6 3L2 7l4 4 M2 7h7a4 4 0 0 1 0 8',
+    redo: 'M10 3l4 4-4 4 M14 7H7a4 4 0 0 0 0 8',
     check: 'M3 8l3 3 7-7',
     duplicate: 'M6 6h7v7H6z M3 10V3h7',
     plus: 'M8 3v10 M3 8h10',

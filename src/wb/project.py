@@ -220,18 +220,27 @@ def save_project(
     operation: str = "save",
     summary: str = "",
 ) -> Project:
-    """Write atomically and return the saved project (revision + 1, history appended).
-
-    Conflict detection is check-then-replace, not a lock: it protects against a
-    stale editor, not against two writers racing within the same instant.
-    """
+    """Serialize writers, record an edit snapshot, and replace the project atomically."""
+    from wb import edit_history
+    from wb.locks import file_lock
     path = Path(path)
-    if path.exists():
-        on_disk = json.loads(path.read_text(encoding="utf-8")).get("project_revision")
-        if on_disk != expected_revision:
-            raise RevisionConflict(f"{path}の現在の版は{on_disk}です。指定された版は{expected_revision}です")
-    saved = project.model_copy(deep=True)
-    saved.project_revision = project.project_revision + 1
+    with file_lock(edit_history.directory(path) / 'write.lock'):
+        return _save_project_locked(project, path, expected_revision, operation, summary)
+
+
+def _save_project_locked(project, path, expected_revision, operation, summary):
+    from wb import edit_history
+    before = load_project(path) if path.exists() else None
+    if before is not None and before.project_revision != expected_revision:
+        raise RevisionConflict(f"{path}の現在の版は{before.project_revision}です。指定された版は{expected_revision}です")
+    if operation in {'undo', 'redo'}:
+        if before is None:
+            raise ProjectError('保存済みの操作がありません')
+        saved = edit_history.restore(path, before, operation)
+    else:
+        saved = project.model_copy(deep=True)
+        edit_history.record(path, before, saved, operation)
+    saved.project_revision = expected_revision + 1
     saved.history.append(_history(operation, saved.project_revision, summary))
     text = json.dumps(saved.model_dump(mode="json"), ensure_ascii=False, indent=2)
 
@@ -246,6 +255,10 @@ def save_project(
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+    try:
+        edit_history.prune(path, saved)
+    except OSError:
+        pass  # A cleanup failure must not report a committed save as failed.
     return saved
 
 

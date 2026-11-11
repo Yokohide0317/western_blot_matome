@@ -16,8 +16,8 @@
   export let onlane;                // (laneId, change, immediate)
   export let oncompute;
   export let onplace;
+  export let onexcel;
   export let csvUrl = '';
-  export let excelUrl = '';
 
   const csvName = 'quantification.csv';
   $: panel = panels.find(p => p.panel_id === panelId);
@@ -52,6 +52,7 @@
   $: sourceReady = rawAvailable && info?.width > 0 && info?.height > 0 && !infoError;
   $: current = sourceReady && !!results && info?.results_current === true && !pending && !busy && !formChanged;
   $: canCompute = sourceReady && !formChanged && !busy && !pending;
+  $: allComputed = (project.quantification_groups || []).length > 0 && project.quantification_groups.every(g => g.results);
 
   function saveSettings() {
     const text = saturation.trim();
@@ -117,13 +118,16 @@
       <h2>結果</h2>
       <div class="actions">
         <button class="primary" disabled={!canCompute} on:click={oncompute}>計算</button>
+        {#if current && allComputed}
+          <button on:click={onexcel} data-testid="quant-excel">Excel（全件）</button>
+        {:else}<button disabled title="すべての定量を計算してから出力できます">Excel（全件）</button>{/if}
         {#if current}
-          <a class="button" href={excelUrl} download="quantification.xlsx" data-testid="quant-excel">Excel</a>
           <a class="button" href={csvUrl} download={csvName} data-testid="quant-csv">CSV</a>
-        {:else}<button disabled title="計算してから出力できます">Excel</button><button disabled title="計算してから出力できます">CSV</button>{/if}
+        {:else}<button disabled title="計算してから出力できます">CSV</button>{/if}
         {#if pending}<span class="help" role="status">位置を保存中</span>{/if}
         {#if formChanged}<span class="help" role="status">計算設定を保存してください。</span>{/if}
       </div>
+      {#if !allComputed && project.quantification_groups.length > 1}<p class="help">未計算の定量があります。全件を計算するとExcelにまとめて出力できます。</p>{/if}
       {#if !results}
         <p class="empty-note" data-testid="quant-results-empty">未計算です。</p>
       {:else if !current}

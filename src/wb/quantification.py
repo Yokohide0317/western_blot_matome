@@ -149,17 +149,8 @@ def csv_bytes(project, root, group):
     return output.getvalue().encode('utf-8-sig')
 
 
-def excel(project, root, group):
-    """Export numeric results and reproducible settings without spreadsheet formulas."""
-    from io import BytesIO
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
-
-    if not current(project, root, group)['results_current']:
-        raise ValueError('定量結果がありません。現在の条件で再計算してください')
-    book = Workbook()
-    results = book.active
-    results.title = '定量結果'
+def _result_sheet(book, group, title):
+    results = book.create_sheet(title)
     keys = ['lane_id', 'sample_name', 'area_px', 'raw_sum', 'background_mean', 'net_signal', 'saturated_pixels', 'status']
     results.append(['レーン', 'サンプル', '面積 (px)', '積分強度', '背景平均', '背景補正後', '飽和画素数', '状態', 'バンド x', 'バンド y', '背景 x', '背景 y', '幅 (px)', '高さ (px)'])
     for row, lane in zip(group.results['rows'], group.lanes):
@@ -167,8 +158,10 @@ def excel(project, root, group):
         values[7] = {'ok': '背景以下' if row['net_signal'] is not None and row['net_signal'] < 0 else '有効', 'excluded': '除外', 'saturated': '飽和'}.get(row['status'], row['status'])
         results.append(values + [lane.x, lane.y, lane.background_x, lane.background_y, group.width_px, group.height_px])
     results.auto_filter.ref = results.dimensions
-    settings = book.create_sheet('解析条件')
-    settings.append(['項目', '値'])
+    return results
+
+
+def _conditions(project, group):
     source = find(project.sources, 'source_asset_id', group.source_asset_id)
     capture = find(project.captures, 'capture_id', group.capture_id)
     conditions = group.model_dump(exclude={'results', 'lanes'})
@@ -178,8 +171,12 @@ def excel(project, root, group):
                       formula='raw_sum - area_px * background_mean' if group.signal_polarity == 'high' else 'area_px * background_mean - raw_sum',
                       saturation_limit_verified=group.saturation_value is not None,
                       effective_saturation_value=group.saturation_value if group.saturation_value is not None else (65535 if group.signal_polarity == 'high' else 0))
-    for key, value in conditions.items():
-        settings.append([key, json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value])
+    return conditions
+
+
+def _excel_bytes(book):
+    from io import BytesIO
+    from openpyxl.styles import Font, PatternFill, Alignment
     for sheet in book:
         sheet.freeze_panes = 'A2'
         for row in sheet:
@@ -197,3 +194,61 @@ def excel(project, root, group):
     output = BytesIO()
     book.save(output)
     return output.getvalue()
+
+
+def excel(project, root, group):
+    """Export a single group's numeric results and reproducible settings."""
+    from openpyxl import Workbook
+    if not current(project, root, group)['results_current']:
+        raise ValueError('定量結果がありません。現在の条件で再計算してください')
+    book = Workbook()
+    book.remove(book.active)
+    _result_sheet(book, group, '定量結果')
+    settings = book.create_sheet('解析条件')
+    settings.append(['項目', '値'])
+    for key, value in _conditions(project, group).items():
+        settings.append([key, json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value])
+    return _excel_bytes(book)
+
+
+def excel_all(project, root):
+    """One workbook, one result tab per group, and shared per-tab analysis conditions.
+
+    Every group must be current: never silently omit an unfinished measurement
+    or export stale values alongside fresh ones.
+    """
+    import re
+    from openpyxl import Workbook
+    if not project.quantification_groups:
+        raise ValueError('定量グループがありません。定量を開始して計算してください')
+    rank = {p.panel_id: i for i, p in enumerate(sorted(project.panels, key=lambda p: p.display_order or 0))}
+    groups = sorted(project.quantification_groups, key=lambda g: rank.get(g.panel_id, len(rank)))
+    for group in groups:
+        info = current(project, root, group)
+        if not info['results_current']:
+            panel = find(project.panels, 'panel_id', group.panel_id)
+            raise ValueError(f"{panel.label or panel.panel_id}の定量を出力できません。{info.get('reason', '再計算してください')}")
+    book = Workbook()
+    book.remove(book.active)
+    settings = book.create_sheet('解析条件')
+    settings.append(['シート', '項目', '値'])
+    used = {'解析条件'.casefold(), 'history'}
+    for group in groups:
+        panel = find(project.panels, 'panel_id', group.panel_id)
+        capture = find(project.captures, 'capture_id', group.capture_id)
+        exposure = f' ({capture.exposure_s:g}s)' if capture.exposure_s is not None else ''
+        base = re.sub(r'[\\/*?:\[\]\x00-\x1f]', '_', (panel.label or panel.panel_id) + exposure).strip(" '") or '定量結果'
+        title = base[:31].rstrip(" '")
+        index = 2
+        while title.casefold() in used:
+            suffix = f' ({index})'
+            title = base[:31-len(suffix)].rstrip(" '") + suffix
+            index += 1
+        used.add(title.casefold())
+        _result_sheet(book, group, title)
+        for key, value in _conditions(project, group).items():
+            settings.append([title, key, json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value])
+    # Result tabs come first; the shared conditions tab stays at the end.
+    book.move_sheet(settings, offset=len(groups))
+    book.active = 0
+    return _excel_bytes(book)

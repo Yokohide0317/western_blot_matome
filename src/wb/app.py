@@ -18,6 +18,8 @@ WEB_DIR = Path(__file__).parent / "web"
 
 # POST /api/<name> -> api function. Each takes expected_revision and returns the saved project.
 OPERATIONS = {
+    "undo": api.undo,
+    "redo": api.redo,
     "start_quantification": api.start_quantification,
     "place_quantification": api.place_quantification,
     "update_quantification": api.update_quantification,
@@ -99,6 +101,11 @@ def create_app(project_dir):
     def revision():
         return {"project_revision": current_revision()}
 
+    @app.get('/api/edit_history')
+    def edit_history():
+        from wb.edit_history import status
+        return status(location, api._load(location))
+
     @app.get("/api/server")
     def server_identity():
         return {"pid": os.getpid(), "project_path": str(location.resolve())}
@@ -176,6 +183,16 @@ def create_app(project_dir):
             Q, p, g = quantification_context(group_id)
             return Response(Q.csv_bytes(p, location.parent, g), media_type='text/csv',
                             headers={'Content-Disposition': 'attachment; filename="quantification.csv"'})
+        except Exception as exc:
+            raise_http(exc)
+
+    @app.get('/api/quantification_excel')
+    def quantification_excel_all():
+        try:
+            from wb import quantification as Q
+            return Response(Q.excel_all(api._load(location), location.parent),
+                            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            headers={'Content-Disposition': 'attachment; filename="quantification.xlsx"'})
         except Exception as exc:
             raise_http(exc)
 

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import subprocess
 import sys
 import zipfile
 
@@ -38,6 +39,8 @@ def parser():
         "export": "PPTXかPNGを書き出す",
         "validate": "元画像と編集内容を検証",
         "install-skill": "Skillを導入",
+        "install-app": "常駐アプリをApplications / Programsに作成",
+        "app": "WBMアプリを開き、共通サーバーを起動",
         "config": "設定ファイル（ChemiDocのファイル名の読み方など）を表示・作成・確認",
         "update": "新しいバージョンに更新（--check で確認だけ）",
         "start": "サーバーを起動してURLを表示",
@@ -50,8 +53,13 @@ def parser():
             command.add_argument("path", nargs="?" if name == "open" else None)
         if name == 'init':
             command.add_argument('--refresh', action='store_true', help='既存状態をバックアップし、元画像を取り込み直して編集を初期化')
-        if name == "open":
+        if name in ("open", "app"):
             command.add_argument("--no-browser", action="store_true")
+        if name == 'install-app':
+            command.add_argument('--destination', help='作成するWBM.app / WBM.exeのパス')
+        if name == 'start':
+            command.add_argument('--desktop-session', help=argparse.SUPPRESS)
+            command.add_argument('--owner-pid', type=int, help=argparse.SUPPRESS)
         if name == "propose":
             command.add_argument("--apply", action="store_true")
             command.add_argument("--summary", action="store_true", help="提案の段と警告件数だけを表示")
@@ -89,7 +97,7 @@ def parser():
                 'export': '計算済みの結果をExcel・CSVに出力',
             }.items():
                 q = actions.add_parser(action, help=help_text, description=help_text)
-                q.add_argument('target', nargs='?' if action == 'show' else None,
+                q.add_argument('target', nargs='?' if action in ('show', 'export') else None,
                                help='段のラベルまたはID' if action == 'start' else '定量グループID')
                 q.add_argument('--project', default=argparse.SUPPRESS)
                 q.add_argument('--json', action='store_true', default=argparse.SUPPRESS)
@@ -99,6 +107,7 @@ def parser():
                     q.add_argument('--settings', required=True, help='update_quantificationの変更内容を記したJSONファイル')
                 if action == 'export':
                     q.add_argument('--format', choices=('excel', 'csv'), default='excel')
+                    q.add_argument('--all', action='store_true', help='全定量グループを別シートにまとめてExcel出力')
         if name == "set-exposure":
             command.add_argument("capture_id")
         if name == "rename":
@@ -135,6 +144,12 @@ def _execute(args):
     name = args.command
     if name == "install-skill":
         return api.install_skill(args.claude, args.codex, args.agents)
+    if name == 'install-app':
+        from wb.desktop import install_app
+        return install_app(args.destination)
+    if name == 'app':
+        from wb.desktop import start_app
+        return start_app(no_browser=args.no_browser)
     if name == "update":
         from wb import update
 
@@ -142,7 +157,11 @@ def _execute(args):
     if name == "start":
         from wb import server
 
-        return server.ensure_server()
+        desktop = {'session': args.desktop_session, 'owner_pid': args.owner_pid} if args.desktop_session else None
+        if desktop:
+            return server.ensure_server(desktop=desktop)
+        from wb.desktop import start_app
+        return start_app(no_browser=True)
     if name == "config":
         from wb import config
 
@@ -266,6 +285,23 @@ def _quantify(path, args):
     project = api._load(path)
     revision = project.project_revision
     action = args.quant_action
+    if action == 'export':
+        if args.all:
+            if args.target is not None or args.format != 'excel':
+                raise ValueError('--allはグループIDを指定せず、Excel形式で使用してください')
+            data = Q.excel_all(project, path.parent)
+            receipt = {'group_count': len(project.quantification_groups)}
+        else:
+            if not args.target:
+                raise ValueError('定量グループIDか--allを指定してください')
+            group = Q.find(project.quantification_groups, 'group_id', args.target)
+            data = Q.excel(project, path.parent, group) if args.format == 'excel' else Q.csv_bytes(project, path.parent, group)
+            receipt = {'group_id': group.group_id}
+        suffix = 'xlsx' if args.format == 'excel' else 'csv'
+        output = P.output_dir(path) / 'exports' / f'quantification-{uuid4().hex[:12]}.{suffix}'
+        with output.open('xb') as stream:
+            stream.write(data)
+        return {'path': str(output), **receipt}
     if action == 'show' and args.target is None:
         return {'project_revision': revision, 'groups': [
             {'group_id': g.group_id, 'panel_id': g.panel_id, 'capture_id': g.capture_id,
@@ -290,13 +326,6 @@ def _quantify(path, args):
             project = api.update_quantification(path, group.group_id, revision, **changes)
         elif action == 'compute':
             project = api.compute_quantification(path, group.group_id, revision)
-        elif action == 'export':
-            data = Q.excel(project, path.parent, group) if args.format == 'excel' else Q.csv_bytes(project, path.parent, group)
-            suffix = 'xlsx' if args.format == 'excel' else 'csv'
-            output = P.output_dir(path) / 'exports' / f'quantification-{uuid4().hex[:12]}.{suffix}'
-            with output.open('xb') as stream:
-                stream.write(data)
-            return {'path': str(output), 'group_id': group.group_id}
         group = Q.find(project.quantification_groups, 'group_id', group.group_id)
     return {'ok': True, 'project_revision': project.project_revision, 'group': group.model_dump(mode='json')}
 
@@ -375,14 +404,14 @@ def main(argv=None):
             print(result["message"])
             if result.get("available") and not result.get("can_apply"):
                 print(f"更新するには次の1行を実行してください: {result['command']}")
-        elif args.command == "start":
+        elif args.command in ("start", "app"):
             print(result["url"])
         elif isinstance(result, dict) and "path" in result:
             print(result["path"])
         else:
             print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1 if args.command == "validate" and result["source_issues"] else 0
-    except (ValueError, OSError, KeyError, StopIteration, zipfile.BadZipFile) as exc:
+    except (ValueError, OSError, KeyError, StopIteration, zipfile.BadZipFile, subprocess.SubprocessError) as exc:
         message = f"処理できませんでした: {exc}"
         if json_output:
             print(json.dumps({"error": message}, ensure_ascii=False))

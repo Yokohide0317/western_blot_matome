@@ -40,8 +40,10 @@ WHEEL="https://github.com/$REPO/releases/download/$TAG/wbm-$VERSION-py3-none-any
 say "wbm $VERSION をインストールしています…"
 "$UV" tool install --force --python 3.12 "$WHEEL"
 WBM="$("$UV" tool dir --bin)/wbm"
-"$WBM" install-skill
+if [ "$(uname -s)" = "Darwin" ]; then
+  "$WBM" install-app || say "WBMアプリを終了してから、wbm install-app で作成できます。"
+fi
 "$WBM" --version
 say ""
 say "インストールしました: $WBM"
-say "Claude Code / Codex に Skill「wblot」を入れました。ChemiDocのZIPやフォルダを渡して「まとめて」と頼んでください。"
+say "AIと使う場合は、別途 wbm install-skill を実行してください。"

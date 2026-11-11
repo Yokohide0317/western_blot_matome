@@ -25,3 +25,4 @@ export const quantificationSourceUrl = group => `api/quantification_source/${enc
 export const quantificationCsvUrl = id => `api/quantification_csv/${encodeURIComponent(id)}`;
 
 export const quantificationExcelUrl = id => `api/quantification_excel/${encodeURIComponent(id)}`;
+export const quantificationExcelAllUrl = 'api/quantification_excel';

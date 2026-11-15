@@ -16,12 +16,12 @@ def find(items, key, value):
     return item
 
 
-def load(project, root, group):
-    source = next((s for s in project.sources if s.source_asset_id == group.source_asset_id), None)
+def load_raw16(project, root, source_asset_id, frame_id, capture_id):
+    source = next((s for s in project.sources if s.source_asset_id == source_asset_id), None)
     if source is None or source.representation_kind != 'analysis_export_candidate' or not source.relative_path:
         raise ValueError(RAW16_REQUIRED)
-    frame = find(project.frames, 'frame_id', group.frame_id)
-    capture = find(project.captures, 'capture_id', group.capture_id)
+    frame = find(project.frames, 'frame_id', frame_id)
+    capture = find(project.captures, 'capture_id', capture_id)
     if not capture.analysis_source_asset_id:
         raise ValueError(RAW16_REQUIRED)
     if capture.analysis_source_asset_id != source.source_asset_id:
@@ -63,6 +63,21 @@ def load(project, root, group):
     if (frame.width is not None and frame.width != w) or (frame.height is not None and frame.height != h):
         raise ValueError('元画像の寸法が変わっています')
     return a
+
+
+def load_capture(project, root, capture_id):
+    capture = find(project.captures, 'capture_id', capture_id)
+    source_id = capture.analysis_source_asset_id
+    if not source_id:
+        raise ValueError(RAW16_REQUIRED)
+    frames = [f for f in project.frames if f.source_asset_id == source_id]
+    if len(frames) != 1:
+        raise ValueError('定量用画像のページを一意に指定できません')
+    return load_raw16(project, root, source_id, frames[0].frame_id, capture_id)
+
+
+def load(project, root, group):
+    return load_raw16(project, root, group.source_asset_id, group.frame_id, group.capture_id)
 
 
 def identity(project, g):

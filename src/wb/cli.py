@@ -26,6 +26,7 @@ def parser():
         "propose": "自動提案",
         "set-exposure": "採用露光を変更",
         "adjust": "角度と範囲を調整",
+        "inspect": "段のバンド位置・傾き・飽和を数値で確認",
         "rotate": "選択範囲を保ったまま90度・180度回転",
         "rename": "段のラベルを変更",
         "reorder": "段を並べ替え",
@@ -64,7 +65,7 @@ def parser():
         if name == "propose":
             command.add_argument("--apply", action="store_true")
             command.add_argument("--summary", action="store_true", help="提案の段と警告件数だけを表示")
-        if name in ("set-exposure", "adjust", "rename", "marker", "rotate"):
+        if name in ("set-exposure", "adjust", "rename", "marker", "rotate", "inspect"):
             command.add_argument("panel")
         if name == 'rotate':
             command.add_argument('--degrees', type=int, choices=(-90, 90, 180), default=90)
@@ -76,6 +77,7 @@ def parser():
             command.add_argument("x1", type=float)
             command.add_argument("y1", type=float)
             command.add_argument("--rotation", type=float, default=0.0)
+            command.add_argument("--auto-rotation", action="store_true", help="バンドの傾きを数値解析して自動で水平に補正")
             command.add_argument("--membrane-label")
             command.add_argument("--label")
             command.add_argument("--frame", help="座標の基準にする画像（既定は wbm overview と同じ基準画像）")
@@ -117,6 +119,10 @@ def parser():
             command.add_argument("label")
         if name == "adjust":
             command.add_argument("--rotation", type=float)
+            command.add_argument("--auto-rotation", action="store_true", help="バンドの傾きを数値解析して自動で水平に補正")
+            command.add_argument("--max-delta", type=float, default=15.0, help="自動回転の最大補正角（度）")
+            command.add_argument("--min-confidence", type=float, default=0.2, help="自動回転を適用する最小信頼度")
+            command.add_argument("--dry-run", action="store_true", help="自動回転を適用せず推定結果のみ返す")
             command.add_argument("--crop-left", type=float)
             command.add_argument("--crop-right", type=float)
             command.add_argument("--crop-top", type=float)
@@ -237,6 +243,7 @@ def _execute(args):
             user_label=args.membrane_label,
             label=args.label,
             reference_frame_id=args.frame,
+            auto_rotation=args.auto_rotation,
         )
         panel = saved.panels[-1]
         entry = next(p for p in api.panel_summaries(saved) if p["panel_id"] == panel.panel_id)
@@ -262,7 +269,28 @@ def _execute(args):
     elif name == "marker":
         x0, x1 = (None, None) if args.reset else _marker_x(project, panel, args)
         saved = api.set_marker_x(path, panel.panel_id, x0, x1, revision)
+    elif name == "inspect":
+        return api.inspect_panel_bands(path, panel.panel_id)
     elif name == "adjust":
+        if args.auto_rotation:
+            if args.rotation is not None:
+                raise ValueError("--auto-rotationと--rotationは同時に指定できません")
+            res = api.auto_align_panel(
+                path,
+                panel.panel_id,
+                revision,
+                max_delta_deg=args.max_delta,
+                min_confidence=args.min_confidence,
+                dry_run=args.dry_run,
+            )
+            saved = res["project"]
+            entry = next(p for p in api.panel_summaries(saved) if p["panel_id"] == panel.panel_id)
+            return {
+                "ok": True,
+                "project_revision": saved.project_revision,
+                "panel": entry,
+                "alignment": res["alignment"],
+            }
         saved = api.adjust(
             path,
             panel.panel_id,

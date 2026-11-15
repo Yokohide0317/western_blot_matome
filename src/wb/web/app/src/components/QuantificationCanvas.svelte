@@ -32,7 +32,7 @@
   $: zoom = whole.width / view.width;
   $: issues = overlapIssues(visibleLanes, size);
   $: selectedLane = visibleLanes.find(l => l.lane_id === selectedLaneId);
-  $: if (`${group?.group_id}:${image?.width}x${image?.height}` !== resetKey) { resetKey = `${group?.group_id}:${image?.width}x${image?.height}`; vb = null; broken = false; }
+  $: if (`${group?.group_id}:${imageUrl}:${image?.width}x${image?.height}` !== resetKey) { resetKey = `${group?.group_id}:${imageUrl}:${image?.width}x${image?.height}`; vb = null; broken = false; }
   $: if (imageUrl) broken = false;
 
   function svgPoint(event) {
@@ -166,40 +166,42 @@
     {#if image}<span class="pill" aria-label="表示倍率">{zoom.toFixed(1)}×</span>{/if}
   </div>
   <div class="stage">
-    {#if group && image && !loadError}
+    {#if image && imageUrl && !loadError}
       <svg bind:this={svg} class="canvas" class:zoomed={!!vb} class:panning={!!pan} viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`} preserveAspectRatio="xMidYMid meet"
         bind:clientWidth={viewerWidth} bind:clientHeight={viewerHeight} data-zoom={zoom.toFixed(3)} aria-label="定量用の元画像" role="group" use:wheelZoom
         on:pointerdown={startPan} on:pointermove={movePan} on:pointerup={endPan} on:pointercancel={endPan} on:lostpointercapture={endPan} on:dblclick={() => vb = null}>
         <image preserveAspectRatio="none" class:inverted class:crisp={zoom > 4} href={imageUrl} width={image.width} height={image.height} on:error={() => broken = true}/>
-        {#each visibleLanes as lane (lane.lane_id)}
-          {#each ['background', 'band'] as kind}
-            {@const x = kind === 'band' ? lane.x : lane.background_x}
-            {@const y = kind === 'band' ? lane.y : lane.background_y}
-            <g class={`roi ${kind}`} class:selected={lane.lane_id === selectedLaneId} class:excluded={lane.excluded} class:warn={!!issues[lane.lane_id]}
-              data-lane={lane.lane_id} data-kind={kind} data-x={x} data-y={y}
-              role="button" tabindex="0" aria-roledescription="移動できる枠" aria-label={`${boxName(lane, kind)}${lane.excluded ? '（除外）' : ''}、${boxValue(lane, kind)}。矢印キーで移動、Shiftで10px`}
-              on:pointerdown={event => startBox(event, lane, kind)} on:pointermove={moveBox} on:pointerup={endBox} on:pointercancel={endBox} on:lostpointercapture={endBox}
-              on:keydown={event => keyBox(event, lane, kind)} on:focus={() => onselect(lane.lane_id)}>
-              <rect {x} {y} width={size.width} height={size.height} vector-effect="non-scaling-stroke"/>
-              {#if lane.lane_id === selectedLaneId}
-                {#each handles as [horizontal, vertical]}
-                  <rect class="resize-handle" data-resize={`${horizontal},${vertical}`} role="button" tabindex="0"
-                    aria-label="全レーンの枠サイズを変更" aria-disabled={busy}
-                    x={x + (horizontal+1)*size.width/2 - 5/scale} y={y + (vertical+1)*size.height/2 - 5/scale}
-                    width={10/scale} height={10/scale} vector-effect="non-scaling-stroke"
-                    style={`cursor: ${!horizontal ? 'ns' : !vertical ? 'ew' : horizontal === vertical ? 'nwse' : 'nesw'}-resize`}
-                    on:pointerdown={event => startResize(event, horizontal, vertical)} on:pointermove={moveResize}
-                    on:pointerup={endResize} on:pointercancel={endResize} on:lostpointercapture={endResize}
-                    on:keydown={event => keyResize(event, horizontal, vertical)}/>
-                {/each}
-              {/if}
-              <text x={x + 3 / scale} y={y - 4 / scale} font-size={12 / scale} pointer-events="none">{lane.lane_id}{kind === 'background' ? ' 背景' : ''}{issues[lane.lane_id] ? ' !' : ''}{lane.excluded ? ' 除外' : ''}</text>
-            </g>
+        {#if group}
+          {#each visibleLanes as lane (lane.lane_id)}
+            {#each ['background', 'band'] as kind}
+              {@const x = kind === 'band' ? lane.x : lane.background_x}
+              {@const y = kind === 'band' ? lane.y : lane.background_y}
+              <g class={`roi ${kind}`} class:selected={lane.lane_id === selectedLaneId} class:excluded={lane.excluded} class:warn={!!issues[lane.lane_id]}
+                data-lane={lane.lane_id} data-kind={kind} data-x={x} data-y={y}
+                role="button" tabindex="0" aria-roledescription="移動できる枠" aria-label={`${boxName(lane, kind)}${lane.excluded ? '（除外）' : ''}、${boxValue(lane, kind)}。矢印キーで移動、Shiftで10px`}
+                on:pointerdown={event => startBox(event, lane, kind)} on:pointermove={moveBox} on:pointerup={endBox} on:pointercancel={endBox} on:lostpointercapture={endBox}
+                on:keydown={event => keyBox(event, lane, kind)} on:focus={() => onselect(lane.lane_id)}>
+                <rect {x} {y} width={size.width} height={size.height} vector-effect="non-scaling-stroke"/>
+                {#if lane.lane_id === selectedLaneId}
+                  {#each handles as [horizontal, vertical]}
+                    <rect class="resize-handle" data-resize={`${horizontal},${vertical}`} role="button" tabindex="0"
+                      aria-label="全レーンの枠サイズを変更" aria-disabled={busy}
+                      x={x + (horizontal+1)*size.width/2 - 5/scale} y={y + (vertical+1)*size.height/2 - 5/scale}
+                      width={10/scale} height={10/scale} vector-effect="non-scaling-stroke"
+                      style={`cursor: ${!horizontal ? 'ns' : !vertical ? 'ew' : horizontal === vertical ? 'nwse' : 'nesw'}-resize`}
+                      on:pointerdown={event => startResize(event, horizontal, vertical)} on:pointermove={moveResize}
+                      on:pointerup={endResize} on:pointercancel={endResize} on:lostpointercapture={endResize}
+                      on:keydown={event => keyResize(event, horizontal, vertical)}/>
+                  {/each}
+                {/if}
+                <text x={x + 3 / scale} y={y - 4 / scale} font-size={12 / scale} pointer-events="none">{lane.lane_id}{kind === 'background' ? ' 背景' : ''}{issues[lane.lane_id] ? ' !' : ''}{lane.excluded ? ' 除外' : ''}</text>
+              </g>
+            {/each}
           {/each}
-        {/each}
+        {/if}
       </svg>
     {:else if loadError}<div class="blank" role="alert">{loadError}</div>
-    {:else if group}<div class="blank" role="status">画像を読み込み中</div>
+    {:else if group || imageUrl}<div class="blank" role="status">画像を読み込み中</div>
     {:else}<div class="blank">定量を開始すると、元画像が表示されます</div>{/if}
     {#if broken}<div class="blank over" role="alert">定量用の画像を表示できません</div>{/if}
   </div>

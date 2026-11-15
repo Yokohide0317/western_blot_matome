@@ -50,6 +50,7 @@ OPERATIONS = {
     "confirm_annotations": api.confirm_annotations,
     "set_selected_exposure": api.set_selected_exposure,
     "set_marker_x": api.set_marker_x,
+    "auto_align_panel": api.auto_align_panel,
 }
 
 
@@ -149,6 +150,13 @@ def create_app(project_dir):
     def validate():
         return api.validate(location)
 
+    @app.get("/api/inspect/{panel_id}")
+    def inspect_panel(panel_id: str):
+        try:
+            return api.inspect_panel_bands(location, panel_id)
+        except Exception as exc:
+            raise_http(exc)
+
     def quantification_context(group_id):
         from wb import quantification as Q
         p = api._load(location)
@@ -162,19 +170,42 @@ def create_app(project_dir):
         except Exception as exc:
             raise_http(exc)
 
+    def _raw16_png_response(array):
+        import io
+        import numpy as np
+        from PIL import Image
+        a = array.astype(np.float64)
+        lo, hi = float(a.min()), float(a.max())
+        a = ((a - lo) * 255 / (hi - lo)).astype('uint8') if hi > lo else np.zeros(a.shape, dtype='uint8')
+        out = io.BytesIO()
+        Image.fromarray(a).save(out, format='PNG')
+        return Response(out.getvalue(), media_type='image/png')
+
+    @app.get('/api/quantification_capture_info/{capture_id}')
+    def quantification_capture_info(capture_id: str):
+        try:
+            from wb import quantification as Q
+            p = api._load(location)
+            a = Q.load_capture(p, location.parent, capture_id)
+            h, w = a.shape
+            return {'capture_id': capture_id, 'width': w, 'height': h}
+        except Exception as exc:
+            raise_http(exc)
+
+    @app.get('/api/quantification_capture/{capture_id}.png')
+    def quantification_capture(capture_id: str):
+        try:
+            from wb import quantification as Q
+            p = api._load(location)
+            return _raw16_png_response(Q.load_capture(p, location.parent, capture_id))
+        except Exception as exc:
+            raise_http(exc)
+
     @app.get('/api/quantification_source/{group_id}.png')
     def quantification_source(group_id: str):
         try:
-            import io
-            import numpy as np
-            from PIL import Image
             Q, p, g = quantification_context(group_id)
-            a = Q.load(p, location.parent, g).astype(np.float64)
-            lo, hi = float(a.min()), float(a.max())
-            a = ((a-lo)*255/(hi-lo)).astype('uint8') if hi > lo else np.zeros(a.shape, dtype='uint8')
-            out = io.BytesIO()
-            Image.fromarray(a).save(out, format='PNG')
-            return Response(out.getvalue(), media_type='image/png')
+            return _raw16_png_response(Q.load(p, location.parent, g))
         except Exception as exc:
             raise_http(exc)
 
@@ -244,7 +275,12 @@ def create_app(project_dir):
             if payload["expected_revision"] != current:
                 raise project.RevisionConflict(f"current revision {current}")
             inspect.signature(function).bind(location, **payload)
-            return function(location, **payload).model_dump(mode="json")
+            result = function(location, **payload)
+            if isinstance(result, dict) and "project" in result:
+                out = dict(result)
+                out["project"] = out["project"].model_dump(mode="json")
+                return out
+            return result.model_dump(mode="json")
         except Exception as exc:
             raise_http(exc)
 

@@ -42,8 +42,8 @@ ChemiDocの書き出しファイル名はラボによって違うことがある
    **膜が1枚も見つからない、または足りないとき**（`propose --apply` の `panels` が空で `next` が付いているか、写っている膜より少ない）は、利用者に頼まず、自分で画像を見て膜を追加する。
    1. `wbm overview --project "<project>" --json` を実行し、戻り値の `path` の画像を開いて見る。座標の目盛り（単位は元画像のピクセル）付きで画像全体が写っている。緑の枠が登録済みの膜、オレンジの枠がSelection（図に使う範囲）。目盛りが粗ければ `--grid 50` で細かくする。
    2. 写っている膜ごとに、四角い範囲（左上 `x0 y0`、右下 `x1 y1`）と傾きを読み取る。傾きは、バンドの並びが右上がりなら正、右下がりなら負の角度（度）にする。膜の縁が見えにくいときは、バンドの並び（とマーカーのラダー）が収まる範囲を膜とみなす。発光の画像で縁が見えないときは、戻り値の `frames` にあるマーカー画像を `--frame <frame_id>` で見て形をつかんでよい。ただし座標は、必ず既定の基準画像（`is_reference` が true の画像）から読む。
-   3. 上の膜から順に `wbm add-membrane <x0> <y0> <x1> <y1> --rotation <角度> --frame <基準画像のframe_id> --project "<project>" --json` で追加する。
-   4. もう一度 `wbm overview` を実行して、枠が膜とバンドに合っているかを自分の目で確かめる。ずれていれば `wbm adjust <段> --rotation/--crop-top/--crop-bottom/--crop-left/--crop-right` で直す（切り出しの座標は傾きを補正した座標だが、傾きが小さければ目盛りの値とほぼ同じ）。
+   3. 上の膜から順に `wbm add-membrane <x0> <y0> <x1> <y1> --auto-rotation --frame <基準画像のframe_id> --project "<project>" --json`（または `--rotation <角度>`）で追加する。
+   4. まず `wbm inspect <段> --project "<project>" --json` でバンド位置・残差傾き・飽和を数値で確認し、傾きが残っていれば `wbm adjust <段> --auto-rotation --project "<project>" --json` で補正する。数値だけで判断できないときだけ `wbm overview` の画像を開いて確かめ、ずれていれば `wbm adjust <段> --rotation/--crop-top/--crop-bottom/--crop-left/--crop-right` で直す（切り出しの座標は傾きを補正した座標だが、傾きが小さければ目盛りの値とほぼ同じ）。
    5. 利用者には「自動では膜が見つからなかったので、画像を見て膜を◯枚追加しました。画面（<url>）で範囲が合っているか確かめてください」と短く伝える。
    使わない膜があるかは利用者が決める。すべての膜を追加しておき、除外は指示を受けてから行う。
 
@@ -56,9 +56,10 @@ ChemiDocの書き出しファイル名はラボによって違うことがある
    利用者の指示（段の追加・変更、角度、ラベル名、露光、並び順、除外、レーン数・試料名など）を以下のコマンドで反映する。画面側は変更を自動で検知して即座に再描画する。
    - ラベル（抗体名等）を変える: `wbm rename <段> <名前> --project "<project>" --json`
    - 採用露光を変える: `wbm set-exposure <段> <撮影ID> --project "<project>" --json`
-   - 角度・4辺切り出し範囲・出力幅を直す: `wbm adjust <段> [--rotation D] [--crop-left X0] [--crop-right X1] [--crop-top Y0] [--crop-bottom Y1] [--width PX] --project "<project>" --json`
+   - 角度・4辺切り出し範囲・出力幅を直す: `wbm adjust <段> [--rotation D | --auto-rotation [--max-delta D] [--min-confidence C] [--dry-run]] [--crop-left X0] [--crop-right X1] [--crop-top Y0] [--crop-bottom Y1] [--width PX] --project "<project>" --json`（`--auto-rotation` はバンドの傾きを数値解析して自動で水平に補正する）
+   - バンド位置・残差傾き・飽和を数値で確認する: `wbm inspect <段> --project "<project>" --json`
    - 縦向きのバンド列など、選択範囲を保って向きを変える: `wbm rotate <段> --degrees -90 --project "<project>" --json`（`-90`＝左90°、`90`＝右90°、`180`＝半回転）。画面の角度表示内の「左90°」「右90°」と同じ処理。90°回転ではレーン数を保って等間隔に戻すため、必要なら境界を再調整する。元画像は変更しない。自動提案も膜の外形だけでなくバンドの形と列の向きで縦配置を判定するが、180°の向きと試料順は利用者と確認する。
-   - 手動で新しいメンブレン／セレクションを追加する: `wbm add-membrane <x0> <y0> <x1> <y1> [--rotation D] [--membrane-label M] [--label L] [--frame F] --project "<project>" --json`（画面上の一覧下にある `＋` でも追加可）
+   - 手動で新しいメンブレン／セレクションを追加する: `wbm add-membrane <x0> <y0> <x1> <y1> [--rotation D | --auto-rotation] [--membrane-label M] [--label L] [--frame F] --project "<project>" --json`（画面上の一覧下にある `＋` でも追加可）
    - 座標の目盛り付きで画像全体を見る（膜の位置の読み取り・確認用）: `wbm overview [--frame F] [--grid PX] [--raw] --project "<project>" --json`（戻り値の `path` の画像を開く）
    - 段の並び順を変える: `wbm reorder <段1> <段2> ... --project "<project>" --json`（カンマ区切り `A,B,C` も可）
    - 段を図に含める／除外する: `wbm include <段> --project "<project>" --json` / `wbm exclude <段> --project "<project>" --json`
@@ -79,6 +80,7 @@ ChemiDocの書き出しファイル名はラボによって違うことがある
 
 ## 注意事項とルール
 
+- **画像の目視確認（`wbm overview`）を最小限にし、まず数値解析を優先する。** 傾き補正には `wbm adjust <段> --auto-rotation --json` や `wbm add-membrane ... --auto-rotation` を、バンド位置・残差傾き・飽和の確認には `wbm inspect <段> --json` を使い、`wbm overview` の画像を開く回数を減らす。
 - **抗体名・タンパク質名・試料名・レーン数を利用者に尋ねない。** 必要だと思えば、利用者が自分で画面に入力するか、指示してくる。言われたときだけ反映し、それまでラベルは仮の `A`、`B` のままでよい。
 - **作業の区切りで返答するときは、必ず画面のURL（`http://127.0.0.1:<port>/p/<ID>/`）を書く。** 分からなければ `wbm open "<project>" --no-browser --json` の `url` を使う。
 - `<段>` はパネルラベル（`A`, `B` 等）、`panel_id`、またはSelectionが1つだけのメンブレン名（`M1` 等）で指定する。

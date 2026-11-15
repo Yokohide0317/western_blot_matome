@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { ApiError, request, isIncluded, quantificationSourceUrl, quantificationCsvUrl, quantificationExcelAllUrl, quantificationInfoPath } from './lib/api.js';
+  import { ApiError, request, isIncluded, quantificationSourceUrl, quantificationCaptureInfoPath, quantificationCaptureUrl, quantificationCsvUrl, quantificationExcelAllUrl, quantificationInfoPath } from './lib/api.js';
   import { sameLanes, moveRoi, setRoi, updateLane } from './lib/quantification.js';
   import TopBar from './components/TopBar.svelte';
   import FigurePane from './components/FigurePane.svelte';
@@ -153,20 +153,31 @@
   const setEditing = (key, on) => { if (on) editing.add(key); else editing.delete(key); };
 
   // Quantification (optional third step). ROI positions are full-resolution raw pixels; the server validates every change.
-  let qPanelId = '', qGroupId = '', qLaneId = null, qDraft = null, qTimer, qSaving = false;
+  let qPanelId = '', qGroupId = '', qCaptureId = '', prevQPanelId = '', qLaneId = null, qDraft = null, qTimer, qSaving = false;
   let qInfo = null, qInfoError = '', qDims = {}, qInfoToken = 0;
+  let qCaptureInfo = null, qCaptureError = '', qCaptureDims = {}, qCaptureToken = 0;
   $: qGroups = project?.quantification_groups || [];
   $: qPanels = panels.filter(p => figurePanels.includes(p) || qGroups.some(g => g.panel_id === p.panel_id));
   $: if (qPanels.length && !qPanels.some(p => p.panel_id === qPanelId)) qPanelId = qPanels[0].panel_id;
   $: qPanelGroups = qGroups.filter(g => g.panel_id === qPanelId);
-  $: if (!qPanelGroups.some(g => g.group_id === qGroupId)) qGroupId = qPanelGroups[0]?.group_id || '';
+  $: if (qPanelId !== prevQPanelId) {
+    prevQPanelId = qPanelId;
+    qGroupId = qPanelGroups[0]?.group_id || '';
+    if (qPanelGroups[0]) qCaptureId = qPanelGroups[0].capture_id;
+  } else if (qGroupId && !qPanelGroups.some(g => g.group_id === qGroupId)) {
+    qGroupId = qPanelGroups[0]?.group_id || '';
+    if (qPanelGroups[0]) qCaptureId = qPanelGroups[0].capture_id;
+  }
   $: qGroup = qGroups.find(g => g.group_id === qGroupId) || null;
   $: qLanes = qDraft ?? qGroup?.lanes ?? [];
   $: if (qGroup && !qLanes.some(l => l.lane_id === qLaneId)) qLaneId = qLanes[0]?.lane_id ?? null;
   $: qImage = qInfo?.group_id === qGroupId ? {width: qInfo.width, height: qInfo.height} : qDims[qGroupId] || null;
+  $: qCaptureKey = qCaptureId ? `${qCaptureId}:${project?.project_revision ?? ''}` : '';
+  $: qCaptureImage = qCaptureInfo?.key === qCaptureKey ? {width: qCaptureInfo.width, height: qCaptureInfo.height} : qCaptureDims[qCaptureKey] || null;
   $: qSize = {width: qGroup?.width_px ?? 1, height: qGroup?.height_px ?? 1};
   $: setEditing('quant', qDraft !== null);
   $: loadQuantInfo(stage === 'quantification' ? qGroup : null, project?.project_revision);
+  $: loadQuantCaptureInfo(stage === 'quantification' && !qGroup ? qCaptureId : '', project?.project_revision);
   async function loadQuantInfo(group, revision) {
     const token = ++qInfoToken;
     if (!group) { qInfo = null; qInfoError = ''; return; }
@@ -184,11 +195,27 @@
       qInfo = null; qInfoError = e.message || '元画像を確認できません';
     }
   }
+  async function loadQuantCaptureInfo(captureId, revision) {
+    const token = ++qCaptureToken;
+    if (!captureId) { qCaptureInfo = null; qCaptureError = ''; return; }
+    const key = `${captureId}:${revision ?? ''}`;
+    if (qCaptureDims[key]) { qCaptureInfo = {...qCaptureDims[key], key}; qCaptureError = ''; return; }
+    try {
+      const info = await request(quantificationCaptureInfoPath(captureId));
+      if (token !== qCaptureToken) return;
+      if (!(info.width > 0 && info.height > 0)) { qCaptureInfo = null; qCaptureError = '元画像を確認できません'; return; }
+      qCaptureDims = {...qCaptureDims, [key]: {width: info.width, height: info.height}};
+      qCaptureInfo = {...info, key}; qCaptureError = '';
+    } catch (e) {
+      if (token !== qCaptureToken) return;
+      qCaptureInfo = null; qCaptureError = e.message || '元画像を確認できません';
+    }
+  }
   async function qStart(panelId, captureId) {
     const before = new Set(qGroups.map(g => g.group_id));
     const result = await mutate('start_quantification', {panel_id: panelId, ...(captureId ? {capture_id: captureId} : {})}, '定量を開始しました');
     const created = result && result !== true && (result.quantification_groups || []).find(g => !before.has(g.group_id));
-    if (created) { qPanelId = created.panel_id; qGroupId = created.group_id; qLaneId = null; }
+    if (created) { qPanelId = created.panel_id; qGroupId = created.group_id; qCaptureId = created.capture_id; qLaneId = null; }
   }
   const qSettings = (patch, message) => mutate('update_quantification', {group_id: qGroup.group_id, ...patch}, message);
   const qCompute = () => mutate('compute_quantification', {group_id: qGroup.group_id}, '計算しました');
@@ -305,7 +332,7 @@
             <FigurePane {project} {panels} selectedPanelId={panel?.panel_id} activeRegionId={activeRegion?.region_id} {preview} {busy} onselect={selectPanel} onrename={rename}
               onadd={addRow} onsetincluded={setIncluded} ondelete={deleteRow} onreorder={reorder} onlanes={setLanes} onsetnames={setNames} onlaneedges={saveLaneBoundaries} onediting={setEditing}/>
           {:else}
-            <QuantificationPane {project} panels={qPanels} {busy} pending={qDraft !== null || dragging} bind:panelId={qPanelId} bind:groupId={qGroupId} bind:selectedLaneId={qLaneId}
+            <QuantificationPane {project} panels={qPanels} {busy} pending={qDraft !== null || dragging} bind:panelId={qPanelId} bind:groupId={qGroupId} bind:captureId={qCaptureId} bind:selectedLaneId={qLaneId}
               group={qGroup} lanes={qLanes} info={qInfo} infoError={qInfoError} csvUrl={qGroup ? quantificationCsvUrl(qGroup.group_id) : ''} onexcel={downloadQuantificationExcel}
               onstart={qStart} onsettings={qSettings} onlane={(laneId, change, immediate) => qEdit(lanes => updateLane(lanes, laneId, change), immediate ? 'now' : 'soon')}
               oncompute={qCompute} onplace={() => mutate('place_quantification', {group_id: qGroup.group_id}, 'バンド選択から枠を配置しました')}/>
@@ -313,7 +340,9 @@
         </section>
         <section aria-label="元画像">
         {#if stage === 'quantification'}
-          <QuantificationCanvas group={qGroup} image={qImage} imageUrl={qGroup ? quantificationSourceUrl(qGroup) : ''} lanes={qLanes} selectedLaneId={qLaneId} loadError={qInfoError}
+          <QuantificationCanvas group={qGroup} image={qGroup ? qImage : qCaptureImage}
+            imageUrl={qGroup ? quantificationSourceUrl(qGroup) : (qCaptureId ? quantificationCaptureUrl(qCaptureId, project?.project_revision) : '')}
+            lanes={qGroup ? qLanes : []} selectedLaneId={qGroup ? qLaneId : null} loadError={qGroup ? qInfoError : qCaptureError}
             busy={busy || qDraft !== null} onresize={patch => qSettings(patch, '全レーンの枠サイズを変更しました')} onselect={id => qLaneId = id} onedit={(laneId, kind, x, y) => qMoveTo(laneId, kind, x, y, null)} onnudge={qNudge} oncommit={qCommit} ondrag={qDrag}/>
         {:else}<SourceCanvas {drawRequest} {project} panel={canvasPanel} {preview} bind:mode {busy} {stage} initialDraw={manualEmpty && !panels.length ? 'membrane' : null}
           onselect={selectPanel} onselectregion={selectRegion} onsave={saveGeometry} onmarker={setMarker} onrotate={rotateSelection}

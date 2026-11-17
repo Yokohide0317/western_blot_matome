@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from urllib.request import Request, urlopen
 
 import pytest
@@ -41,6 +42,45 @@ def test_two_projects_at_once(small_project, tmp_path):
     shutil.rmtree(other)
     assert not hub.recent()[0]["exists"]
     assert client.get(f"/p/{second['id']}/api/revision").status_code == 404
+
+
+class _FrozenClock(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2000, 1, 1, tzinfo=timezone.utc)
+
+
+def _project(tmp_path, name):
+    folder = tmp_path / name
+    folder.mkdir()
+    path = folder / f"{name}.wblot"
+    path.write_text("{}", encoding="utf-8")
+    return path
+
+
+def test_recent_lists_latest_first_when_timestamps_tie(tmp_path, monkeypatch):
+    monkeypatch.setattr(hub, "datetime", _FrozenClock)
+    one, two = _project(tmp_path, "sample-1"), _project(tmp_path, "sample-2")
+    first, second = hub.register(one), hub.register(two)
+    assert first["last_opened"] == second["last_opened"]
+    assert [e["id"] for e in hub.recent()] == [second["id"], first["id"]]
+    stored = json.loads(hub._registry_path().read_text(encoding="utf-8"))
+    assert list(stored["projects"]) == [second["id"], first["id"]]
+
+    again = hub.register(one)
+    assert again["id"] == first["id"]
+    assert [e["id"] for e in hub.recent()] == [first["id"], second["id"]]
+    stored = json.loads(hub._registry_path().read_text(encoding="utf-8"))
+    assert list(stored["projects"]) == [first["id"], second["id"]]
+
+
+def test_recent_limit_keeps_newest_when_timestamps_tie(tmp_path, monkeypatch):
+    monkeypatch.setattr(hub, "datetime", _FrozenClock)
+    monkeypatch.setattr(hub, "RECENT_LIMIT", 2)
+    entries = [hub.register(_project(tmp_path, f"sample-{n}")) for n in (1, 2, 3)]
+    assert [e["id"] for e in hub.recent()] == [entries[2]["id"], entries[1]["id"]]
+    stored = json.loads(hub._registry_path().read_text(encoding="utf-8"))
+    assert list(stored["projects"]) == [entries[2]["id"], entries[1]["id"]]
 
 
 def test_requests_from_other_sites_are_refused(small_project):

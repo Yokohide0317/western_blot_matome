@@ -742,3 +742,81 @@ def test_raw16_required_for_start_compute_and_exports(quant_project, missing_kin
     for output in ('csv', 'excel'):
         assert client.get('/api/quantification_' + output + '/' + group['group_id']).status_code == 422
     assert len(client.get('/api/project').json()['quantification_groups']) == 1
+
+
+def test_quantification_capture_preview_endpoints_and_distinct_exposures(tmp_path):
+    pixels_c1 = np.full((HEIGHT, WIDTH), 100, dtype=np.uint16)
+    pixels_c1[10:20, 10:30] = 2000
+    pixels_c2 = np.full((HEIGHT, WIDTH), 100, dtype=np.uint16)
+    pixels_c2[10:20, 10:30] = 2000
+    pixels_c2[30:40, 40:60] = 60000
+
+    p1 = tmp_path / "exp1.raw16.tif"
+    p2 = tmp_path / "exp2.raw16.tif"
+    tifffile.imwrite(p1, pixels_c1, photometric="miniswhite")
+    tifffile.imwrite(p2, pixels_c2, photometric="miniswhite")
+    raw1, raw2 = p1.read_bytes(), p2.read_bytes()
+
+    records = {
+        "sources": [
+            {
+                "source_asset_id": "RAW1",
+                "relative_path": p1.name,
+                "sha256": hashlib.sha256(raw1).hexdigest(),
+                "size_bytes": len(raw1),
+                "representation_kind": "analysis_export_candidate",
+                "image": {"width": WIDTH, "height": HEIGHT, "dtype": "uint16", "channels": "GRAY", "page_count": 1},
+                "quant_eligibility": "unverified",
+            },
+            {
+                "source_asset_id": "RAW2",
+                "relative_path": p2.name,
+                "sha256": hashlib.sha256(raw2).hexdigest(),
+                "size_bytes": len(raw2),
+                "representation_kind": "analysis_export_candidate",
+                "image": {"width": WIDTH, "height": HEIGHT, "dtype": "uint16", "channels": "GRAY", "page_count": 1},
+                "quant_eligibility": "unverified",
+            },
+        ],
+        "frames": [
+            {"frame_id": "F1", "source_asset_id": "RAW1", "width": WIDTH, "height": HEIGHT, "page_index": 0, "channel_selection": "GRAY"},
+            {"frame_id": "F2", "source_asset_id": "RAW2", "width": WIDTH, "height": HEIGHT, "page_index": 0, "channel_selection": "GRAY"},
+        ],
+        "captures": [
+            {"capture_id": "C1", "presentation_source_asset_id": "RAW1", "analysis_source_asset_id": "RAW1", "modality": "chemiluminescence", "exposure_s": 1.0},
+            {"capture_id": "C2", "presentation_source_asset_id": "RAW2", "analysis_source_asset_id": "RAW2", "modality": "chemiluminescence", "exposure_s": 5.0},
+            {"capture_id": "C_NORAW", "presentation_source_asset_id": "RAW1", "modality": "chemiluminescence", "exposure_s": 10.0},
+        ],
+        "image_sets": [{"image_set_id": "SET1", "capture_ids": ["C1", "C2", "C_NORAW"], "reference_frame_id": "F1"}],
+    }
+    project = P.new_project("synthetic-capture-preview", records)
+    P.save_project(project, P.locate(tmp_path, create=True), project.project_revision, "test_fixture")
+    client = TestClient(create_app(tmp_path))
+
+    info1 = client.get("/api/quantification_capture_info/C1")
+    assert info1.status_code == 200, info1.text
+    assert info1.json() == {"capture_id": "C1", "width": WIDTH, "height": HEIGHT}
+
+    info2 = client.get("/api/quantification_capture_info/C2")
+    assert info2.status_code == 200, info2.text
+    assert info2.json() == {"capture_id": "C2", "width": WIDTH, "height": HEIGHT}
+
+    png1 = client.get("/api/quantification_capture/C1.png")
+    png2 = client.get("/api/quantification_capture/C2.png")
+    assert png1.status_code == 200 and png1.headers["content-type"] == "image/png"
+    assert png2.status_code == 200 and png2.headers["content-type"] == "image/png"
+
+    arr1 = np.array(Image.open(io.BytesIO(png1.content)))
+    arr2 = np.array(Image.open(io.BytesIO(png2.content)))
+    assert arr1.shape == (HEIGHT, WIDTH)
+    assert arr2.shape == (HEIGHT, WIDTH)
+    assert not np.array_equal(arr1, arr2)
+    # In C1, the (10:20, 10:30) region is the maximum (255); in C2, (30:40, 40:60) is the maximum (255) so (10:20, 10:30) is much dimmer.
+    assert int(arr1[15, 15]) == 255
+    assert int(arr2[15, 15]) < 20
+    assert int(arr2[35, 50]) == 255
+
+    assert client.get("/api/quantification_capture_info/UNKNOWN").status_code == 422
+    assert client.get("/api/quantification_capture/UNKNOWN.png").status_code == 422
+    assert client.get("/api/quantification_capture_info/C_NORAW").status_code == 422
+    assert client.get("/api/quantification_capture/C_NORAW.png").status_code == 422

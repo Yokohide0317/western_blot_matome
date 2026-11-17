@@ -66,7 +66,8 @@ def register(project_file) -> dict:
     }
     with _registry_lock():
         data = _read()
-        data["projects"][entry["id"]] = entry
+        data["projects"].pop(entry["id"], None)
+        data["projects"] = {entry["id"]: entry, **data["projects"]}
         newest = sorted(data["projects"].values(), key=lambda e: e.get("last_opened", ""), reverse=True)
         data["projects"] = {e["id"]: e for e in newest[:RECENT_LIMIT]}
         _write(data)

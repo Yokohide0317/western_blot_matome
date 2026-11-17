@@ -6,6 +6,7 @@
   export let pending = false;       // lane edits not yet saved
   export let panelId = '';
   export let groupId = '';
+  export let captureId = '';
   export let selectedLaneId = null;
   export let group = null;
   export let lanes = [];
@@ -26,7 +27,6 @@
     || project.image_sets.find(s => s.image_set_id === project.membrane_regions.find(r => r.region_id === panel?.region_id)?.image_set_id);
   $: rawSources = new Set(project.sources.filter(s => s.representation_kind === 'analysis_export_candidate' && s.relative_path && s.quant_eligibility !== 'presentation_only' && s.image?.dtype === 'uint16' && ['gray', 'grayscale', 'grey'].includes(s.image?.channels?.toLowerCase())).map(s => s.source_asset_id));
   $: captures = project.captures.filter(c => (imageSet ? imageSet.capture_ids.includes(c.capture_id) : c.capture_id === panel?.selected_exposure_id) && rawSources.has(c.analysis_source_asset_id));
-  let captureId = '';
   $: if (!captures.some(c => c.capture_id === captureId)) captureId = captures.some(c => c.capture_id === panel?.selected_exposure_id) ? panel.selected_exposure_id : captures[0]?.capture_id || '';
   const seconds = c => c.exposure_s != null ? `${Number(c.exposure_s)}s` : c.capture_id;
   const panelName = p => p.label || project.membrane_regions.find(r => r.region_id === p.region_id)?.user_label || p.panel_id;
@@ -70,7 +70,12 @@
       <div class="rows" role="group" aria-label="定量する段">
         {#each panels as p (p.panel_id)}
           <button class="row" class:active={p.panel_id === panelId} aria-pressed={p.panel_id === panelId} disabled={busy || pending}
-            data-panel={p.panel_id} on:click={() => { panelId = p.panel_id; groupId = ''; }}>
+            data-panel={p.panel_id} on:click={() => {
+              panelId = p.panel_id;
+              const nextGroup = (project.quantification_groups || []).find(g => g.panel_id === p.panel_id);
+              groupId = nextGroup ? nextGroup.group_id : '';
+              captureId = nextGroup ? nextGroup.capture_id : '';
+            }}>
             <span class="name">{panelName(p)}</span>
             <span class="meta">{project.membrane_regions.find(r => r.region_id === p.region_id)?.user_label || ''}</span>
             {#if countFor(p.panel_id)}<span class="count" title="定量グループ数">定量 {countFor(p.panel_id)}</span>{/if}
@@ -81,7 +86,11 @@
     {#if panel}
       <div class="start">
         <label>露光
-          <select bind:value={captureId} disabled={busy || pending || !captures.length} aria-label="定量に使う露光">
+          <select value={captureId} on:change={e => {
+            captureId = e.currentTarget.value;
+            const matching = groups.find(g => g.capture_id === captureId);
+            groupId = matching ? matching.group_id : '';
+          }} disabled={busy || pending || !captures.length} aria-label="定量に使う露光">
             {#each captures as c (c.capture_id)}
               <option value={c.capture_id}>{seconds(c)}{c.capture_id === panel.selected_exposure_id ? '（図の採用露光）' : ''}</option>
             {/each}
@@ -97,7 +106,7 @@
       <div class="groups" role="group" aria-label="定量グループ">
         {#each groups as g (g.group_id)}
           <button class="chip" class:active={g.group_id === groupId} aria-pressed={g.group_id === groupId} disabled={busy || pending}
-            data-group={g.group_id} on:click={() => groupId = g.group_id}>
+            data-group={g.group_id} on:click={() => { groupId = g.group_id; captureId = g.capture_id; }}>
             {groupTitle(g, project, numberOf(g))}
             <span class="state">{g.results ? '計算済み' : '未計算'}</span>
           </button>

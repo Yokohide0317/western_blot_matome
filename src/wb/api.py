@@ -1013,6 +1013,119 @@ def adjust(
     )
 
 
+def _extract_panel_rectified_signal(project, project_dir, panel):
+    import math
+    from wb.alignment import _red_display_mask, extract_band_signal
+    from wb.geometry import warp
+    from wb.rendering import display_parts, exposure_to_reference, frame_for_capture, load_source_pixels
+
+    dg = panel.display_geometry
+    if not dg or not dg.crop_rect:
+        raise ValueError("先に段の候補を反映してください")
+    capture_id = panel.selected_exposure_id
+    capture_ids = panel_capture_ids(project, panel)
+    if not capture_id or not any(c.capture_id == capture_id for c in project.captures):
+        if not capture_ids:
+            raise ValueError(f"段 {panel.panel_id} に画像がありません")
+        capture_id = capture_ids[0]
+    d, crop = display_parts(project, panel)
+    a = exposure_to_reference(project, capture_id, dg.reference_frame_id)
+    frame = frame_for_capture(project, capture_id)
+    root = P.locate(project_dir).parent
+    pixels = load_source_pixels(project, root, frame.source_asset_id)
+    width = max(1, math.ceil(crop.x1 - crop.x0))
+    height = max(1, math.ceil(crop.y1 - crop.y0))
+    crop_transform = Affine.translation(-crop.x0, -crop.y0, d.to_frame_id, f"{d.to_frame_id}:crop") @ d @ a
+    warped = warp(pixels, crop_transform, width, height, border_value=(255, 255, 255))
+    signal = extract_band_signal(warped)
+    saturation_mask = _red_display_mask(warped)
+    return signal, saturation_mask, capture_id
+
+
+def inspect_panel_bands(project_dir, panel_id) -> dict:
+    """Return read-only numerical band metrics and residual tilt for a panel."""
+    import math
+    from wb.alignment import inspect_rectified_bands
+
+    project = _load(project_dir)
+    panel = _get(project.panels, "panel_id", panel_id)
+    dg = panel.display_geometry
+    if not dg or not dg.crop_rect:
+        raise ValueError("先に段の候補を反映してください")
+    transform = _get(project.transforms, "transform_id", dg.reference_to_rectified_transform_id)
+    current_angle = float(math.degrees(math.atan2(transform.matrix[1][0], transform.matrix[0][0])))
+    signal, saturation_mask, capture_id = _extract_panel_rectified_signal(project, project_dir, panel)
+    inspected = inspect_rectified_bands(signal, saturation_mask=saturation_mask)
+    warnings = []
+    if inspected["saturation_fraction"] > 0.0:
+        warnings.append(f"Saturation pixels detected ({inspected['saturation_fraction']:.1%}).")
+    if not inspected["rows"]:
+        warnings.append("No horizontal band rows detected.")
+    if abs(inspected["residual_tilt_deg"]) >= 0.5 and inspected["tilt_confidence"] >= 0.2:
+        warnings.append(
+            f"Residual tilt of {inspected['residual_tilt_deg']:+.2f} deg detected (confidence {inspected['tilt_confidence']:.2f})."
+        )
+    return {
+        "panel_id": panel.panel_id,
+        "label": panel.label,
+        "current_rotation_deg": current_angle,
+        "recommended_rotation_deg": float(current_angle + inspected["residual_tilt_deg"]),
+        "crop_rect": {k: float(getattr(dg.crop_rect, k)) for k in ("x0", "y0", "x1", "y1")},
+        "selected_exposure_id": capture_id,
+        "row_positions_y": inspected["row_positions_y"],
+        "peak_signals": inspected["peak_signals"],
+        "lane_peaks_x": inspected["lane_peaks_x"],
+        "saturation_fraction": inspected["saturation_fraction"],
+        "residual_tilt_deg": inspected["residual_tilt_deg"],
+        "tilt_confidence": inspected["tilt_confidence"],
+        "signal_p99": inspected["signal_p99"],
+        "band_rows": inspected["rows"],
+        "warnings": warnings,
+    }
+
+
+def auto_align_panel(
+    project_dir,
+    panel_id,
+    expected_revision,
+    max_delta_deg=15.0,
+    min_confidence=0.2,
+    dry_run=False,
+) -> dict:
+    """Estimate horizontal band tilt for a panel and optionally apply it via adjust."""
+    import math
+    from wb.alignment import estimate_horizontal_tilt
+
+    project = _load(project_dir)
+    panel = _get(project.panels, "panel_id", panel_id)
+    dg = panel.display_geometry
+    if not dg or not dg.crop_rect:
+        raise ValueError("先に段の候補を反映してください")
+    transform = _get(project.transforms, "transform_id", dg.reference_to_rectified_transform_id)
+    current_angle = float(math.degrees(math.atan2(transform.matrix[1][0], transform.matrix[0][0])))
+    signal, _, _ = _extract_panel_rectified_signal(project, project_dir, panel)
+    res = estimate_horizontal_tilt(signal, max_angle_deg=float(max_delta_deg))
+    delta_deg = float(res["delta_deg"])
+    confidence = float(res["confidence"])
+    estimated_rotation_deg = float(current_angle + delta_deg)
+    alignment = {
+        "previous_rotation_deg": current_angle,
+        "estimated_rotation_deg": estimated_rotation_deg,
+        "delta_deg": delta_deg,
+        "confidence": confidence,
+        "method": res["method"],
+        "applied": False,
+        "band_rows": res["band_rows"],
+        "metrics": res["metrics"],
+        "warnings": list(res["warnings"]),
+    }
+    if not dry_run and confidence >= float(min_confidence) and abs(delta_deg) >= 0.05:
+        saved = adjust(project_dir, panel_id, expected_revision, rotation=estimated_rotation_deg)
+        alignment["applied"] = True
+        return {"project": saved, "alignment": alignment}
+    return {"project": project, "alignment": alignment}
+
+
 def confirm_alignment(project_dir, image_set_id, evidence, expected_revision):
     if not isinstance(evidence, str) or not evidence.strip():
         raise ValueError("位置合わせを確認した根拠が必要です")
@@ -1677,6 +1790,7 @@ def add_manual_membrane(
     user_label=None,
     label=None,
     create_selection=True,
+    auto_rotation=False,
 ):
     import math
     import numpy as np
@@ -1753,27 +1867,55 @@ def add_manual_membrane(
     angle = float(rotation_deg or 0.0)
     tid = "TR_D_" + pid
     rectified_id = "RECT_" + pid
-    d = Affine.rotation_about(center, angle, reference_frame_id, rectified_id)
+
+    def _fit_crop_for_angle(ang):
+        tr = Affine.rotation_about(center, ang, reference_frame_id, rectified_id)
+        r_pts = tr.apply(pts)
+        x0, y0 = float(r_pts[:, 0].min()), float(r_pts[:, 1].min())
+        x1, y1 = float(r_pts[:, 0].max()), float(r_pts[:, 1].max())
+        box = None
+        for shrink in (0.0, 0.5, 1.0, 2.0, 4.0, 8.0, 12.0, 16.0, 24.0, 32.0):
+            if x1 - x0 <= 2 * shrink + 4 or y1 - y0 <= 2 * shrink + 4:
+                break
+            candidate_box = Rect(x0 + shrink, y0 + shrink, x1 - shrink, y1 - shrink)
+            if polygon_within_frame(tr.inverse().apply(candidate_box.corners()), ref_frame.width, ref_frame.height):
+                box = candidate_box
+                break
+        return tr, r_pts, box
+
+    d, rect_pts, crop_box = _fit_crop_for_angle(angle)
+    if crop_box is None:
+        raise ValueError("指定された範囲と角度が画像枠外にはみ出しています")
+
+    if auto_rotation:
+        from wb.alignment import estimate_horizontal_tilt, extract_band_signal
+        from wb.geometry import warp
+        from wb.rendering import exposure_to_reference
+
+        probe_exp_id, _ = _choose_best_exposure(project, root, image_set, d, crop_box, reference_frame_id)
+        if probe_exp_id:
+            a_probe = exposure_to_reference(project, probe_exp_id, reference_frame_id)
+            p_frame = frame_for_capture(project, probe_exp_id)
+            p_pixels = load_source_pixels(project, root, p_frame.source_asset_id)
+            w_p = max(1, math.ceil(crop_box.x1 - crop_box.x0))
+            h_p = max(1, math.ceil(crop_box.y1 - crop_box.y0))
+            t_p = Affine.translation(-crop_box.x0, -crop_box.y0, d.to_frame_id, f"{d.to_frame_id}:crop") @ d @ a_probe
+            warped_p = warp(p_pixels, t_p, w_p, h_p, border_value=(255, 255, 255))
+            sig_p = extract_band_signal(warped_p)
+            tilt_res = estimate_horizontal_tilt(sig_p, max_angle_deg=15.0)
+            if tilt_res["confidence"] >= 0.2 and abs(tilt_res["delta_deg"]) >= 0.05:
+                cand_d, cand_pts, cand_box = _fit_crop_for_angle(angle + float(tilt_res["delta_deg"]))
+                if cand_box is not None:
+                    angle = angle + float(tilt_res["delta_deg"])
+                    d, rect_pts, crop_box = cand_d, cand_pts, cand_box
+
+    rx0, ry0 = float(rect_pts[:, 0].min()), float(rect_pts[:, 1].min())
+    rx1, ry1 = float(rect_pts[:, 0].max()), float(rect_pts[:, 1].max())
     project.transforms.append(
         Transform.model_validate(
             d.to_json(tid, "reference_to_rectified", "confirmed", 1, {"center": center, "created_by": "human"})
         )
     )
-
-    rect_pts = d.apply(pts)
-    rx0, ry0 = float(rect_pts[:, 0].min()), float(rect_pts[:, 1].min())
-    rx1, ry1 = float(rect_pts[:, 0].max()), float(rect_pts[:, 1].max())
-    # Shrink slightly if rotated corners exceed the frame
-    crop_box = None
-    for shrink in (0.0, 0.5, 1.0, 2.0, 4.0, 8.0):
-        if rx1 - rx0 <= 2 * shrink + 4 or ry1 - ry0 <= 2 * shrink + 4:
-            break
-        candidate_box = Rect(rx0 + shrink, ry0 + shrink, rx1 - shrink, ry1 - shrink)
-        if polygon_within_frame(d.inverse().apply(candidate_box.corners()), ref_frame.width, ref_frame.height):
-            crop_box = candidate_box
-            break
-    if crop_box is None:
-        raise ValueError("指定された範囲と角度が画像枠外にはみ出しています")
 
     # If a distinct colorimetric marker lane is detected on left/right edge of a wide membrane, trim sample x0..x1 cleanly
     marker_tr = _find_or_register_marker_transform(project, root, image_set, reference_frame_id, confirm=False)

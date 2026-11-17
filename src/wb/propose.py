@@ -16,6 +16,7 @@ import math
 import cv2
 import numpy as np
 
+from wb.alignment import estimate_horizontal_tilt
 from wb.geometry import Affine, Rect, crop_polygon_in_source, polygon_within_frame, warp
 from wb.rendering import frame_for_capture, load_source_pixels
 
@@ -322,28 +323,20 @@ def _orientation(refpoly, refimage, signal, label, warnings):
         return -direction, '2D band component major axes' if angles else 'membrane edge fallback', {
             'band_direction_degrees': direction if angles else None, 'elongated_component_count': len(angles),
             'orientation_ambiguity_degrees': 180}
-    # Centroid slopes remain reliable when band widths differ across lanes.
+    # Estimate horizontal band tilt from background-subtracted signal inside regmask.
     _, regmask = _masks(refimage.shape[:2], [refpoly])
-    binary = ((_gray(refimage) > .28) & regmask).astype(np.uint8)
-    n, _, stats, centers = cv2.connectedComponentsWithStats(binary, 8)
-    points = [centers[i] + .5 for i in range(1, n)
-              if stats[i, cv2.CC_STAT_AREA] >= 30 and stats[i, cv2.CC_STAT_WIDTH] >= 10]
-    groups = []
-    for point in sorted(points, key=lambda p: p[1]):
-        if not groups or point[1] - groups[-1][-1][1] > 35:
-            groups.append([])
-        groups[-1].append(point)
-    slopes = []
-    for points in groups:
-        points = np.asarray(points)
-        if len(points) >= 3 and np.ptp(points[:, 0]) > 200:
-            slope = float(np.polyfit(points[:, 0], points[:, 1], 1)[0])
-            if abs(slope) < .1:
-                slopes.append(slope)
-    direction = math.degrees(math.atan(float(np.median(slopes)))) if slopes else edge_angle
-    return -direction, 'band blob row slopes' if slopes else 'membrane edge fallback', {
-        'band_direction_degrees': direction if slopes else None, 'membrane_edge_degrees': edge_angle,
-        'fitted_row_count': len(slopes)}
+    tilt = estimate_horizontal_tilt(signal, mask=regmask)
+    if tilt['method'] != 'insufficient_signal' and tilt['confidence'] >= 0.4:
+        return tilt['delta_deg'], tilt['method'], {
+            'band_direction_degrees': -tilt['delta_deg'],
+            'membrane_edge_degrees': edge_angle,
+            'fitted_row_count': tilt['metrics']['row_count'],
+        }
+    return -edge_angle, 'membrane edge fallback', {
+        'band_direction_degrees': None,
+        'membrane_edge_degrees': edge_angle,
+        'fitted_row_count': 0,
+    }
 
 
 def _vertical_bounds(polygon, left, right):
@@ -839,7 +832,12 @@ def _propose_without_marker(project, image):
             degrees, method, evidence = _orientation(poly, refimage, raw, label, warnings)
             d = Affine.rotation_about(center, degrees, ref.frame_id, f'RECT_{series.image_set_id}_{label}')
             rectpoly = d.apply(poly)
-            left, right = float(rectpoly[:, 0].min() + 2), float(rectpoly[:, 0].max() - 2)
+            sx = np.sort(rectpoly[:, 0])
+            inner_left, inner_right = float(sx[1] + 1), float(sx[2] - 1)
+            if inner_right - inner_left >= 10:
+                left, right = inner_left, inner_right
+            else:
+                left, right = float(rectpoly[:, 0].min() + 2), float(rectpoly[:, 0].max() - 2)
             signal = _composite(registered, sample_ids, image, d, ref.width, ref.height)
             rows = _row_candidates(signal, rectpoly, left, right, d, ref, registered, image, label, warnings)
             rows = [row for row in rows if _has_row_signal(signal, row)]
